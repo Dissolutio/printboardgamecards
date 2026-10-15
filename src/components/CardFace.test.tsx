@@ -10,8 +10,8 @@ const card: Card = {
   bleedMode: 'IMAGE',
   frontProcessedSrc: transparentPng,
   backProcessedSrc: transparentPng,
-  frontBackgroundColor: '#ff0000',
-  backBackgroundColor: '#0000ff',
+  frontBackground: { enabled: true, color: '#ff0000' },
+  backBackground: { enabled: true, color: '#0000ff' },
   bleedColor: '#00ff00',
   quantity: 1,
 }
@@ -48,6 +48,8 @@ describe('CardFace', () => {
     const cardWithoutBack: Card = {
       id: 'empty-back',
       bleedMode: 'COLOR',
+      frontBackground: { enabled: false, color: '#ffffff' },
+      backBackground: { enabled: false, color: '#ffffff' },
       bleedColor: '#00ff00',
       quantity: 1,
     }

@@ -1,4 +1,4 @@
-import type { BleedMode, Card, CardSide } from '../types.ts'
+import type { BleedMode, Card, CardBackground, CardSide } from '../types.ts'
 
 export type PieceFill = {
   rect: 'painted' | 'trim'
@@ -7,17 +7,30 @@ export type PieceFill = {
 
 type PieceStyle = Pick<
   Card,
-  'frontBackgroundColor' | 'backBackgroundColor' | 'bleedColor'
+  'frontBackground' | 'backBackground' | 'bleedColor'
 > & {
   bleedMode: BleedMode
 }
 
+type BackgroundFields = Pick<Card, 'frontBackground' | 'backBackground'>
+
+export function hasBackground(card: BackgroundFields, side: CardSide): boolean {
+  return (side === 'front' ? card.frontBackground : card.backBackground).enabled
+}
+
+export function withBackgroundEnabled(
+  background: CardBackground,
+  enabled: boolean,
+): CardBackground {
+  return { ...background, enabled }
+}
+
 export function backgroundFor(
-  card: Pick<Card, 'frontBackgroundColor' | 'backBackgroundColor'>,
+  card: BackgroundFields,
   side: CardSide,
 ): string {
-  const color = side === 'front' ? card.frontBackgroundColor : card.backBackgroundColor
-  return color ?? '#ffffff'
+  const background = side === 'front' ? card.frontBackground : card.backBackground
+  return background.enabled ? background.color : '#ffffff'
 }
 
 export function pieceFills(card: PieceStyle, side: CardSide): PieceFill[] {

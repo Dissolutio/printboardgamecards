@@ -6,6 +6,7 @@ import {
   type calculateTightGrid,
 } from './geometry.ts'
 import type { CardSide } from '../types.ts'
+import { hasBackground } from './piece.ts'
 
 export type Grid = ReturnType<typeof calculateGrid>
 export type TightGrid = ReturnType<typeof calculateTightGrid>
@@ -84,7 +85,7 @@ export function layoutPrintAndGlue(cards: Card[], grid: TightGrid): PrintAndGlue
     Array.from({ length: card.quantity }, () => ({ card, side: 'front' as const })),
   )
   const backs = printableCards.flatMap((card) =>
-    card.backProcessedSrc && card.backCrop || card.backBackgroundColor !== undefined
+    (card.backProcessedSrc && card.backCrop) || hasBackground(card, 'back')
       ? Array.from({ length: card.quantity }, () => ({ card, side: 'back' as const }))
       : [],
   )

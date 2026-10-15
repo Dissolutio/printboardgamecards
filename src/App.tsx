@@ -15,6 +15,7 @@ import {
 } from './lib/geometry.ts'
 import { cropAreaSize } from './lib/crop.ts'
 import { centeredMaximumCrop, convertCropForBleedMode } from './lib/cropConvert.ts'
+import { hasBackground } from './lib/piece.ts'
 import { loadImageSize, renderCrop } from './lib/renderCrop.ts'
 import {
   layoutDuplexPages,
@@ -39,8 +40,8 @@ function createCard(id: string, previous?: Card): Card {
   return {
     id,
     bleedMode: previous?.bleedMode ?? 'IMAGE',
-    frontBackgroundColor: previous?.frontBackgroundColor,
-    backBackgroundColor: previous?.backBackgroundColor,
+    frontBackground: previous?.frontBackground ?? { enabled: false, color: '#ffffff' },
+    backBackground: previous?.backBackground ?? { enabled: false, color: '#ffffff' },
     bleedColor: previous?.bleedColor ?? '#ffffff',
     quantity: 1,
   }
@@ -671,7 +672,7 @@ function App() {
                   </p>
                 )}
                 {(!card.backProcessedSrc || !card.backCrop) &&
-                  card.backBackgroundColor === undefined && (
+                  !hasBackground(card, 'back') && (
                     <p className="mt-2 text-sm text-warning">
                       No back image or background; no back piece will be printed.
                     </p>

@@ -6,8 +6,8 @@ function createCard(id: string, quantity: number): Card {
   return {
     id,
     bleedMode: 'IMAGE',
-    frontBackgroundColor: '#f5efe6',
-    backBackgroundColor: '#e0f0ff',
+    frontBackground: { enabled: true, color: '#f5efe6' },
+    backBackground: { enabled: true, color: '#e0f0ff' },
     bleedColor: '#ffffff',
     quantity,
   }

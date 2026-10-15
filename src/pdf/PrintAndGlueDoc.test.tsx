@@ -32,8 +32,8 @@ function makeCards(count: number): Card[] {
     backProcessedSrc: distinctBacks[index],
     frontCrop: { x: 0, y: 0, width: 750, height: 1050 },
     backCrop: { x: 0, y: 0, width: 750, height: 1050 },
-    frontBackgroundColor: '#ff0000',
-    backBackgroundColor: '#0000ff',
+    frontBackground: { enabled: true, color: '#ff0000' },
+    backBackground: { enabled: true, color: '#0000ff' },
     bleedColor: '#00ff00',
     quantity: 1,
   }))
@@ -99,8 +99,8 @@ describe('PrintAndGlueDoc PDF rendering', () => {
       bleedMode: 'IMAGE',
       frontProcessedSrc: pixel,
       frontCrop: { x: 0, y: 0, width: 750, height: 1050 },
-      frontBackgroundColor: '#ff0000',
-      backBackgroundColor: '#0000ff',
+      frontBackground: { enabled: true, color: '#ff0000' },
+      backBackground: { enabled: true, color: '#0000ff' },
       bleedColor: '#00ff00',
       quantity: 1,
     }
@@ -119,7 +119,9 @@ describe('PrintAndGlueDoc PDF rendering', () => {
 
     const withoutBackground = await renderToBuffer(
       <PrintAndGlueDoc
-        cards={[{ ...card, backBackgroundColor: undefined }]}
+        cards={[
+          { ...card, backBackground: { ...card.backBackground, enabled: false } },
+        ]}
         paper={PAPER.LETTER}
         grid={grid}
         cardSize={cardSize}

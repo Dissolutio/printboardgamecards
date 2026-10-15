@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { DEFAULT_BLEED, type Size } from '../lib/geometry.ts'
-import { backgroundFor } from '../lib/piece.ts'
+import { backgroundFor, hasBackground } from '../lib/piece.ts'
 import type { Card, CardSide } from '../types.ts'
 
 type CardFaceProps = {
@@ -30,12 +30,10 @@ export default function CardFace({
 }: CardFaceProps) {
   const imageSource =
     source ?? (side === 'front' ? card.frontProcessedSrc : card.backProcessedSrc)
-  const explicitBackground =
-    side === 'front' ? card.frontBackgroundColor : card.backBackgroundColor
   const backgroundColor = backgroundFor(card, side)
   const hasImage = Boolean(imageSource)
   const shouldShowBleedRing =
-    showBleedRing && (hasImage || explicitBackground !== undefined)
+    showBleedRing && (hasImage || hasBackground(card, side))
   const includesBleed = aspectIncludesBleed ?? showBleedRing
   const faceWidth = cardSize.width + (includesBleed ? 2 * DEFAULT_BLEED : 0)
   const faceHeight = cardSize.height + (includesBleed ? 2 * DEFAULT_BLEED : 0)

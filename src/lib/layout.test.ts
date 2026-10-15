@@ -27,7 +27,8 @@ function makeCard(
     backProcessedSrc: backSrc,
     frontCrop: frontSrc ? { x: 0, y: 0, width: 750, height: 1050 } : undefined,
     backCrop: backSrc ? { x: 0, y: 0, width: 750, height: 1050 } : undefined,
-    frontBackgroundColor: '#f5efe6',
+    frontBackground: { enabled: true, color: '#f5efe6' },
+    backBackground: { enabled: false, color: '#ffffff' },
     bleedColor: '#ffffff',
     quantity,
   }
@@ -192,11 +193,31 @@ describe('layoutDuplexPages', () => {
     it('includes a solid-color back without a back image', () => {
       const card = {
         ...makeCard('solid-back', 1, 'front-art'),
-        backBackgroundColor: '#0000ff',
+        backBackground: { enabled: true, color: '#0000ff' },
       }
       const pages = layoutPrintAndGlue([card], grid)
 
       expect(pages.flatMap((page) => page.placements.map(({ side }) => side))).toEqual([
+        'front',
+        'back',
+      ])
+    })
+
+    it('omits a disabled color-only back and includes it when enabled', () => {
+      const card = {
+        ...makeCard('remembered-back', 1, 'front-art'),
+        backBackground: { enabled: false, color: '#0000ff' },
+      }
+      const disabledPages = layoutPrintAndGlue([card], grid)
+      const enabledPages = layoutPrintAndGlue(
+        [{ ...card, backBackground: { ...card.backBackground, enabled: true } }],
+        grid,
+      )
+
+      expect(disabledPages.flatMap((page) => page.placements.map(({ side }) => side))).toEqual([
+        'front',
+      ])
+      expect(enabledPages.flatMap((page) => page.placements.map(({ side }) => side))).toEqual([
         'front',
         'back',
       ])

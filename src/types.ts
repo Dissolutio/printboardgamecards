@@ -7,6 +7,11 @@ export type PixelCropRect = {
   height: number
 }
 
+export type CardBackground = {
+  enabled: boolean
+  color: string
+}
+
 export type Card = {
   id: string
   bleedMode: BleedMode
@@ -16,8 +21,8 @@ export type Card = {
   backProcessedSrc?: string
   frontCrop?: PixelCropRect
   backCrop?: PixelCropRect
-  frontBackgroundColor?: string
-  backBackgroundColor?: string
+  frontBackground: CardBackground
+  backBackground: CardBackground
   bleedColor: string
   quantity: number
 }

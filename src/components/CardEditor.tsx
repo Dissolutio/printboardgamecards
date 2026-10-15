@@ -1,16 +1,21 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import type { KeyboardEvent } from 'react'
 import Cropper, { type Area, type MediaSize, type Point } from 'react-easy-crop'
 import CardFace from './CardFace.tsx'
 import type { Size } from '../lib/geometry.ts'
 import { DEFAULT_BLEED } from '../lib/geometry.ts'
 import { cropAreaSize, effectiveDpi, isLowRes } from '../lib/crop.ts'
-import { backgroundFor } from '../lib/piece.ts'
+import { backgroundFor, withBackgroundEnabled } from '../lib/piece.ts'
 import { centeredMaximumCrop } from '../lib/cropConvert.ts'
 import { renderCrop } from '../lib/renderCrop.ts'
-import type { BleedMode, Card, CardSide, PixelCropRect } from '../types.ts'
-
-const MIN_ZOOM = 0.01
-const MAX_ZOOM = 10
+import type {
+  BleedMode,
+  Card,
+  CardBackground,
+  CardSide,
+  PixelCropRect,
+} from '../types.ts'
+import { clampZoom, MAX_ZOOM, MIN_ZOOM, parseZoomInput, ZOOM_STEP } from '../lib/zoom.ts'
 
 type CardEditorProps = {
   card: Card
@@ -35,7 +40,7 @@ type SideCropProps = {
   areaHeight: number
   bleedMode: BleedMode
   bleed: number
-  backgroundColor?: string
+  background: CardBackground
   error?: string
   onImageSelect: (side: CardSide, file: File) => void
   onCropChange: (side: CardSide, crop: PixelCropRect) => void
@@ -60,7 +65,7 @@ function SideCrop({
   areaHeight,
   bleedMode,
   bleed,
-  backgroundColor,
+  background,
   error,
   onImageSelect,
   onCropChange,
@@ -73,11 +78,12 @@ function SideCrop({
   const renderId = useRef(0)
   const latestCrop = useRef<PixelCropRect | undefined>(undefined)
   const sliderChanging = useRef(false)
-  const zoomCommitTimer = useRef<number | undefined>(undefined)
+  const zoomCommitFrame = useRef<number | undefined>(undefined)
   const seededMissingCrop = useRef(false)
   const [workspaceSize, setWorkspaceSize] = useState({ width: 0, height: 0 })
   const [cropPosition, setCropPosition] = useState<Point>({ x: 0, y: 0 })
   const [zoom, setZoom] = useState(1)
+  const [zoomInput, setZoomInput] = useState('1.0')
   const [mediaSize, setMediaSize] = useState<MediaSize | undefined>(undefined)
   const aspect = areaWidth / areaHeight
   const visibleBackground = backgroundFor(card, side)
@@ -122,8 +128,8 @@ function SideCrop({
   useEffect(
     () => () => {
       renderId.current += 1
-      if (zoomCommitTimer.current !== undefined) {
-        window.clearTimeout(zoomCommitTimer.current)
+      if (zoomCommitFrame.current !== undefined) {
+        window.cancelAnimationFrame(zoomCommitFrame.current)
       }
     },
     [],
@@ -169,16 +175,61 @@ function SideCrop({
     if (!sliderChanging.current) commitCrop(nextCrop)
   }
 
-  function handleZoomChange(value: number) {
-    sliderChanging.current = true
-    setZoom(value)
-    if (zoomCommitTimer.current !== undefined) {
-      window.clearTimeout(zoomCommitTimer.current)
+  function finishZoomInteraction() {
+    if (zoomCommitFrame.current !== undefined) {
+      window.cancelAnimationFrame(zoomCommitFrame.current)
     }
-    zoomCommitTimer.current = window.setTimeout(() => {
+    zoomCommitFrame.current = window.requestAnimationFrame(() => {
       sliderChanging.current = false
       if (latestCrop.current) commitCrop(latestCrop.current)
-    }, 180)
+    })
+  }
+
+  function handleZoomChange(value: number) {
+    const nextZoom = clampZoom(value)
+    sliderChanging.current = true
+    setZoom(nextZoom)
+    setZoomInput(nextZoom.toFixed(1))
+  }
+
+  function commitZoomInput() {
+    const parsed = parseZoomInput(zoomInput)
+    if (parsed === undefined) {
+      setZoomInput(zoom.toFixed(1))
+      return
+    }
+
+    handleZoomChange(parsed)
+    finishZoomInteraction()
+  }
+
+  function handleWorkspaceKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if (event.key.startsWith('Arrow')) {
+      event.preventDefault()
+      const step = event.shiftKey ? 10 : 1
+      setCropPosition((position) => ({
+        x: position.x + (event.key === 'ArrowLeft' ? -step : event.key === 'ArrowRight' ? step : 0),
+        y: position.y + (event.key === 'ArrowUp' ? -step : event.key === 'ArrowDown' ? step : 0),
+      }))
+      sliderChanging.current = true
+      return
+    }
+
+    if (event.key === '+' || event.key === '=' || event.key === '-') {
+      event.preventDefault()
+      handleZoomChange(zoom + (event.key === '-' ? -ZOOM_STEP : ZOOM_STEP))
+    }
+  }
+
+  function handleWorkspaceKeyUp(event: KeyboardEvent<HTMLDivElement>) {
+    if (
+      event.key.startsWith('Arrow') ||
+      event.key === '+' ||
+      event.key === '=' ||
+      event.key === '-'
+    ) {
+      finishZoomInteraction()
+    }
   }
 
   function setFraming(mode: 'FILL' | 'FIT') {
@@ -230,18 +281,18 @@ function SideCrop({
           <input
             className="checkbox checkbox-sm"
             type="checkbox"
-            checked={backgroundColor !== undefined}
+            checked={background.enabled}
             onChange={(event) => onBackgroundToggle(side, event.currentTarget.checked)}
           />
           <span className="label-text">Background</span>
         </label>
-        {backgroundColor !== undefined && (
+        {background.enabled && (
           <label className="form-control w-fit">
             <span className="label-text mb-1">Background color</span>
             <input
               className="input input-bordered h-12 w-20 p-1"
               type="color"
-              value={backgroundColor}
+              value={background.color}
               onChange={(event) => onBackgroundChange(side, event.currentTarget.value)}
             />
           </label>
@@ -267,13 +318,16 @@ function SideCrop({
           <div>
             <div
               ref={workspaceRef}
-              className="cropper-workspace relative w-full overflow-hidden rounded-box"
+              className="cropper-workspace relative w-full overflow-hidden rounded-box focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-2"
+              tabIndex={0}
+              onKeyDown={handleWorkspaceKeyDown}
+              onKeyUp={handleWorkspaceKeyUp}
               style={{
                 height: 'min(70vh, 520px)',
                 maxHeight: '70vh',
                 backgroundColor: visibleBackground,
               }}
-              aria-label={`${side} image crop workspace`}
+              aria-label={`${side} image crop workspace. Arrow keys pan, plus and minus zoom.`}
             >
               {frameSize && (
                 <Cropper
@@ -283,6 +337,7 @@ function SideCrop({
                   zoom={zoom}
                   minZoom={MIN_ZOOM}
                   maxZoom={MAX_ZOOM}
+                  zoomWithScroll={false}
                   aspect={aspect}
                   cropSize={frameSize}
                   cropShape="rect"
@@ -299,7 +354,10 @@ function SideCrop({
                     containerStyle: { width: '100%', height: '100%' },
                   }}
                   onCropChange={setCropPosition}
-                  onZoomChange={setZoom}
+                  onZoomChange={(value) => {
+                    setZoom(value)
+                    setZoomInput(clampZoom(value).toFixed(1))
+                  }}
                   onCropAreaChange={(_area, areaPixels) => {
                     latestCrop.current = asCrop(areaPixels)
                   }}
@@ -332,6 +390,9 @@ function SideCrop({
                 />
               )}
             </div>
+            <p className="mt-1 text-xs text-base-content/60">
+              Drag to pan. Arrow keys nudge. + / - zoom.
+            </p>
 
             <div className="mt-3 flex flex-wrap items-center gap-3">
               <button
@@ -351,17 +412,67 @@ function SideCrop({
                 Fit
               </button>
               <label className="form-control min-w-40 flex-1">
-                <span className="label-text mb-1">Zoom · {zoom.toFixed(2)}×</span>
+                <span className="label-text mb-1">Zoom</span>
                 <input
                   className="range range-primary range-sm"
                   type="range"
                   min={MIN_ZOOM}
                   max={MAX_ZOOM}
-                  step={0.01}
+                  step={ZOOM_STEP}
                   value={zoom}
                   onChange={(event) => handleZoomChange(Number(event.currentTarget.value))}
+                  onPointerUp={finishZoomInteraction}
+                  onKeyUp={finishZoomInteraction}
+                  onBlur={finishZoomInteraction}
                 />
               </label>
+              <div className="join">
+                <button
+                  className="btn btn-sm join-item"
+                  type="button"
+                  aria-label="Zoom out"
+                  onClick={() => {
+                    handleZoomChange(zoom - ZOOM_STEP)
+                    finishZoomInteraction()
+                  }}
+                >
+                  −
+                </button>
+                <input
+                  className="input input-bordered input-sm join-item w-20 text-center"
+                  type="number"
+                  min={MIN_ZOOM}
+                  max={MAX_ZOOM}
+                  step={ZOOM_STEP}
+                  aria-label="Zoom level"
+                  value={zoomInput}
+                  onChange={(event) => setZoomInput(event.currentTarget.value)}
+                  onBlur={commitZoomInput}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      event.preventDefault()
+                      commitZoomInput()
+                      event.currentTarget.blur()
+                    }
+                  }}
+                  onKeyUp={(event) => {
+                    if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+                      commitZoomInput()
+                    }
+                  }}
+                />
+                <button
+                  className="btn btn-sm join-item"
+                  type="button"
+                  aria-label="Zoom in"
+                  onClick={() => {
+                    handleZoomChange(zoom + ZOOM_STEP)
+                    finishZoomInteraction()
+                  }}
+                >
+                  +
+                </button>
+              </div>
             </div>
           </div>
 
@@ -488,8 +599,7 @@ export default function CardEditor({
           const processedSource =
             side === 'front' ? card.frontProcessedSrc : card.backProcessedSrc
           const crop = side === 'front' ? card.frontCrop : card.backCrop
-          const backgroundKey =
-            side === 'front' ? 'frontBackgroundColor' : 'backBackgroundColor'
+          const backgroundKey = side === 'front' ? 'frontBackground' : 'backBackground'
           const sideBackground = card[backgroundKey]
 
           return (
@@ -505,28 +615,22 @@ export default function CardEditor({
               areaHeight={area.height}
               bleedMode={card.bleedMode}
               bleed={DEFAULT_BLEED}
-              backgroundColor={sideBackground}
+              background={sideBackground}
               error={errors[side]}
               onImageSelect={onImageSelect}
               onCropChange={onCropChange}
               onProcessedImage={onProcessedImage}
               onError={onError}
               onBackgroundToggle={(selectedSide, enabled) => {
-                const key =
-                  selectedSide === 'front'
-                    ? 'frontBackgroundColor'
-                    : 'backBackgroundColor'
+                const key = selectedSide === 'front' ? 'frontBackground' : 'backBackground'
                 onCardChange({
                   ...card,
-                  [key]: enabled ? backgroundFor(card, selectedSide) : undefined,
+                  [key]: withBackgroundEnabled(card[key], enabled),
                 })
               }}
               onBackgroundChange={(selectedSide, color) => {
-                const key =
-                  selectedSide === 'front'
-                    ? 'frontBackgroundColor'
-                    : 'backBackgroundColor'
-                onCardChange({ ...card, [key]: color })
+                const key = selectedSide === 'front' ? 'frontBackground' : 'backBackground'
+                onCardChange({ ...card, [key]: { ...card[key], color } })
               }}
             />
           )

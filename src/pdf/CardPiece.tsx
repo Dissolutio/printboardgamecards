@@ -1,6 +1,6 @@
 import { Image, View } from '@react-pdf/renderer'
 import { DEFAULT_BLEED } from '../lib/geometry.ts'
-import { pieceFills } from '../lib/piece.ts'
+import { hasBackground, pieceFills } from '../lib/piece.ts'
 import type { Placement } from '../lib/layout.ts'
 import type { Card, CardSide } from '../types.ts'
 import type { Size } from '../lib/geometry.ts'
@@ -24,9 +24,7 @@ export default function CardPiece({
 }: CardPieceProps) {
   const bleedMode = card.bleedMode
   const source = side === 'front' ? card.frontProcessedSrc : card.backProcessedSrc
-  const hasExplicitBackground =
-    side === 'front' ? card.frontBackgroundColor !== undefined : card.backBackgroundColor !== undefined
-  if (!source && !hasExplicitBackground) return null
+  if (!source && !hasBackground(card, side)) return null
 
   const fills = pieceFills(card, side)
   const imageInset = bleedMode === 'COLOR' ? DEFAULT_BLEED : 0
