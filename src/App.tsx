@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { pdf } from '@react-pdf/renderer'
 import CardEditor from './components/CardEditor.tsx'
+import DuplexDoc from './pdf/DuplexDoc.tsx'
 import SingleSidedDoc from './pdf/SingleSidedDoc.tsx'
 import {
   calculateGrid,
@@ -8,14 +9,20 @@ import {
   DEFAULT_BLEED,
   PAPER,
 } from './lib/geometry.ts'
-import { layoutPages } from './lib/layout.ts'
+import {
+  layoutDuplexPages,
+  layoutPages,
+  type Calibration,
+} from './lib/layout.ts'
 import type { Card, CardSide, PixelCropRect } from './types.ts'
 
 const SIDES: CardSide[] = ['front', 'back']
 const PAPER_OPTIONS: (keyof typeof PAPER)[] = ['LETTER', 'A4']
+const ZERO_CALIBRATION: Calibration = { offsetX: 0, offsetY: 0 }
 
 type SideState<T> = Record<CardSide, T>
 type PaperName = keyof typeof PAPER
+type ExportMode = 'SINGLE' | 'DUPLEX'
 
 function createInitialCard(): Card {
   return {
@@ -51,6 +58,7 @@ async function blobUrlToDataUrl(url: string): Promise<string> {
 function App() {
   const [card, setCard] = useState<Card>(createInitialCard)
   const [paperName, setPaperName] = useState<PaperName>('LETTER')
+  const [exportMode, setExportMode] = useState<ExportMode>('SINGLE')
   const [isExporting, setIsExporting] = useState(false)
   const [exportError, setExportError] = useState<string>()
   const [processedSources, setProcessedSources] = useState<SideState<string | undefined>>({
@@ -76,9 +84,19 @@ function App() {
     bleed: DEFAULT_BLEED,
   })
   const exportCards = processedSources.front
-    ? [{ ...card, frontSrc: processedSources.front }]
+    ? [
+        {
+          ...card,
+          frontSrc: processedSources.front,
+          backSrc: processedSources.back,
+          backCrop: processedSources.back ? card.backCrop : undefined,
+        },
+      ]
     : []
-  const pageCount = layoutPages(exportCards, grid).length
+  const pageCount =
+    exportMode === 'SINGLE'
+      ? layoutPages(exportCards, grid).length
+      : layoutDuplexPages(exportCards, grid, ZERO_CALIBRATION).length
 
   useEffect(
     () => () => {
@@ -154,14 +172,28 @@ function App() {
     setExportError(undefined)
 
     try {
-      const frontDataUrl = await blobUrlToDataUrl(processedSources.front)
-      const pdfBlob = await pdf(
-        <SingleSidedDoc
-          cards={[{ ...card, frontSrc: frontDataUrl }]}
-          paper={paper}
-          grid={grid}
-        />,
-      ).toBlob()
+      const [frontDataUrl, backDataUrl] = await Promise.all([
+        blobUrlToDataUrl(processedSources.front),
+        processedSources.back ? blobUrlToDataUrl(processedSources.back) : undefined,
+      ])
+      const exportCard = {
+        ...card,
+        frontSrc: frontDataUrl,
+        backSrc: backDataUrl,
+        backCrop: backDataUrl ? card.backCrop : undefined,
+      }
+      const pdfDocument =
+        exportMode === 'SINGLE' ? (
+          <SingleSidedDoc cards={[exportCard]} paper={paper} grid={grid} />
+        ) : (
+          <DuplexDoc
+            cards={[exportCard]}
+            paper={paper}
+            grid={grid}
+            calibration={ZERO_CALIBRATION}
+          />
+        )
+      const pdfBlob = await pdf(pdfDocument).toBlob()
       const downloadUrl = URL.createObjectURL(pdfBlob)
 
       try {
@@ -218,9 +250,23 @@ function App() {
               ))}
             </select>
           </label>
+          <label className="form-control w-56">
+            <span className="label-text mb-1">Print mode</span>
+            <select
+              className="select select-bordered w-full"
+              value={exportMode}
+              onChange={(event) =>
+                setExportMode(event.currentTarget.value === 'DUPLEX' ? 'DUPLEX' : 'SINGLE')
+              }
+            >
+              <option value="SINGLE">Single-sided</option>
+              <option value="DUPLEX">Double-sided hand-cut</option>
+            </select>
+          </label>
           <div className="flex flex-wrap items-center gap-4">
             <p className="text-sm text-base-content/60">
-              {pageCount} page{pageCount === 1 ? '' : 's'} · {card.quantity} front
+              {pageCount} {exportMode === 'DUPLEX' ? 'page pair' : 'page'}
+              {pageCount === 1 ? '' : 's'} · {card.quantity} front
               {card.quantity === 1 ? '' : 's'}
             </p>
             <button
@@ -232,7 +278,9 @@ function App() {
               {isExporting ? 'Preparing PDF…' : 'Download PDF'}
             </button>
             <p className="max-w-md text-sm font-medium text-warning">
-              Print at Actual Size / 100% scale. Do not use Fit to Page.
+              {exportMode === 'DUPLEX'
+                ? 'Print at Actual Size. Flip on Long Edge. If printing by hand: print page 1, reload the sheet flipped on its long edge, then print page 2.'
+                : 'Print at Actual Size / 100% scale. Do not use Fit to Page.'}
             </p>
           </div>
           {exportError && (

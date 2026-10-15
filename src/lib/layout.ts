@@ -1,10 +1,13 @@
 import type { Card } from '../types.ts'
-import type { calculateGrid } from './geometry.ts'
+import { applyCalibration, type calculateGrid } from './geometry.ts'
 
 export type Grid = ReturnType<typeof calculateGrid>
+export type Calibration = { offsetX: number; offsetY: number }
 
 export type Placement = {
   cardId: string
+  row: number
+  col: number
   x: number
   y: number
   width: number
@@ -38,6 +41,8 @@ export function layoutPages(cards: Card[], grid: Grid): Page[] {
 
         return {
           cardId: card.id,
+          row,
+          col,
           x: grid.originX + col * grid.cellW,
           y: grid.originY + row * grid.cellH,
           width: grid.cellW,
@@ -48,4 +53,37 @@ export function layoutPages(cards: Card[], grid: Grid): Page[] {
   }
 
   return pages
+}
+
+export type DuplexPage = {
+  front: Placement[]
+  back: Placement[]
+}
+
+export function layoutDuplexPages(
+  cards: Card[],
+  grid: Grid,
+  calibration: Calibration,
+): DuplexPage[] {
+  return layoutPages(cards, grid).map(({ placements: front }) => {
+    const back = front.map((placement) => {
+      const col = grid.cols - 1 - placement.col
+      const backOrigin = applyCalibration(
+        {
+          x: grid.originX + col * grid.cellW,
+          y: grid.originY + placement.row * grid.cellH,
+        },
+        calibration,
+      ).back
+
+      return {
+        ...placement,
+        col,
+        x: backOrigin.x,
+        y: backOrigin.y,
+      }
+    })
+
+    return { front, back }
+  })
 }

@@ -22,6 +22,10 @@ export const CARD_PRESETS = {
 
 export const DEFAULT_BLEED = 9
 
+export function mmToPt(mm: number): number {
+  return (mm * 72) / 25.4
+}
+
 export function calculateGrid({
   paper,
   card,
@@ -76,7 +80,7 @@ export function applyCalibration(
   { offsetX, offsetY }: { offsetX: number; offsetY: number },
 ): { front: Point; back: Point } {
   return {
-    front: { x: origin.x + offsetX, y: origin.y + offsetY },
+    front: origin,
     back: { x: origin.x - offsetX, y: origin.y + offsetY },
   }
 }

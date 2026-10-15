@@ -1,14 +1,27 @@
 import { describe, expect, it } from 'vitest'
-import { CARD_PRESETS, calculateGrid, DEFAULT_BLEED, PAPER } from './geometry.ts'
-import { layoutPages } from './layout.ts'
+import {
+  CARD_PRESETS,
+  calculateGrid,
+  DEFAULT_BLEED,
+  mmToPt,
+  PAPER,
+} from './geometry.ts'
+import { layoutDuplexPages, layoutPages } from './layout.ts'
 import type { Card } from '../types.ts'
 
-function makeCard(id: string, quantity: number, frontSrc?: string): Card {
+function makeCard(
+  id: string,
+  quantity: number,
+  frontSrc?: string,
+  backSrc?: string,
+): Card {
   return {
     id,
     ...CARD_PRESETS.POKER,
     frontSrc,
+    backSrc,
     frontCrop: frontSrc ? { x: 0, y: 0, width: 750, height: 1050 } : undefined,
+    backCrop: backSrc ? { x: 0, y: 0, width: 750, height: 1050 } : undefined,
     bleedMode: 'IMAGE',
     bleedColor: '#ffffff',
     quantity,
@@ -69,5 +82,64 @@ describe('layoutPages', () => {
 
   it('skips cards without a cropped front image', () => {
     expect(layoutPages([makeCard('uncropped', 3)], grid)).toEqual([])
+  })
+})
+
+describe('layoutDuplexPages', () => {
+  const grid = calculateGrid({
+    paper: PAPER.LETTER,
+    card: CARD_PRESETS.POKER,
+    bleed: DEFAULT_BLEED,
+  })
+  const noCalibration = { offsetX: 0, offsetY: 0 }
+
+  it('places five Poker cards into two aligned front/back pairs', () => {
+    const pairs = layoutDuplexPages(
+      [makeCard('poker-a', 3, 'front-a'), makeCard('poker-b', 2, 'front-b')],
+      grid,
+      noCalibration,
+    )
+
+    expect(pairs).toHaveLength(2)
+    expect(pairs.map(({ front }) => front.length)).toEqual([4, 1])
+    expect(pairs.map(({ back }) => back.length)).toEqual([4, 1])
+    expect(pairs[1].front[0].col).toBe(0)
+    expect(pairs[1].back[0].col).toBe(1)
+  })
+
+  it('keeps each back placement in the front placement row and mirrors by column', () => {
+    const [{ front, back }] = layoutDuplexPages(
+      [makeCard('poker-a', 4, 'front-a')],
+      grid,
+      noCalibration,
+    )
+
+    expect(back.map((placement) => placement.col)).toEqual([1, 0, 1, 0])
+    expect(back.map((placement) => placement.row)).toEqual(
+      front.map((placement) => placement.row),
+    )
+  })
+
+  it('applies a 1 mm horizontal offset only to the back', () => {
+    const card = [makeCard('poker-a', 1, 'front-a')]
+    const frontBackPair = layoutDuplexPages(card, grid, noCalibration)[0]
+    const shiftedPair = layoutDuplexPages(card, grid, {
+      offsetX: mmToPt(1),
+      offsetY: 0,
+    })[0]
+
+    expect(shiftedPair.front[0]).toEqual(frontBackPair.front[0])
+    expect(shiftedPair.back[0].x - frontBackPair.back[0].x).toBeCloseTo(-2.83, 2)
+  })
+
+  it('keeps a back placement when the card has no back image', () => {
+    const [pair] = layoutDuplexPages(
+      [makeCard('poker-a', 1, 'front-a')],
+      grid,
+      noCalibration,
+    )
+
+    expect(pair.front).toHaveLength(1)
+    expect(pair.back).toHaveLength(1)
   })
 })

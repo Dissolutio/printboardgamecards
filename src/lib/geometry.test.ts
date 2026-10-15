@@ -4,6 +4,7 @@ import {
   calculateGrid,
   CARD_PRESETS,
   mirrorPageBacks,
+  mmToPt,
   PAPER,
 } from './geometry.ts'
 
@@ -60,10 +61,20 @@ describe('mirrorPageBacks', () => {
 })
 
 describe('applyCalibration', () => {
-  it('inverts the horizontal offset for the back origin', () => {
-    expect(applyCalibration({ x: 10, y: 20 }, { offsetX: 2, offsetY: 3 })).toEqual({
-      front: { x: 12, y: 23 },
-      back: { x: 8, y: 23 },
-    })
+  it('keeps the front fixed and moves the back opposite the horizontal offset', () => {
+    const origin = { x: 10, y: 20 }
+    const calibration = { offsetX: mmToPt(1), offsetY: 0 }
+    const result = applyCalibration(origin, calibration)
+
+    expect(result.front).toBe(origin)
+    expect(result.front).toEqual({ x: 10, y: 20 })
+    expect(result.back.x).toBeCloseTo(origin.x - 2.83, 2)
+    expect(result.back.y).toBe(origin.y)
+  })
+})
+
+describe('mmToPt', () => {
+  it('converts millimeters to points', () => {
+    expect(mmToPt(1)).toBeCloseTo(2.83, 2)
   })
 })
