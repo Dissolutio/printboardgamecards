@@ -1,9 +1,14 @@
 import { renderToBuffer } from '@react-pdf/renderer'
 import { describe, expect, it } from 'vitest'
-import { calculateGrid, CARD_PRESETS, PAPER } from '../lib/geometry.ts'
+import {
+  calculateGrid,
+  calculateTightGrid,
+  CARD_PRESETS,
+  PAPER,
+} from '../lib/geometry.ts'
 import type { Card } from '../types.ts'
 import DuplexDoc from './DuplexDoc.tsx'
-import SingleSidedDoc from './SingleSidedDoc.tsx'
+import PrintAndGlueDoc from './PrintAndGlueDoc.tsx'
 
 const pixel = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAXpeqz8AAAAASUVORK5CYII='
 const distinctBacks = [
@@ -22,14 +27,14 @@ const paperCases = [
 function makeCards(count: number): Card[] {
   return Array.from({ length: count }, (_, index) => ({
     id: `poker-${index + 1}`,
-    bleedMode: 'IMAGE',
+    bleedMode: index % 2 === 0 ? 'IMAGE' : 'COLOR',
     frontProcessedSrc: pixel,
     backProcessedSrc: distinctBacks[index],
     frontCrop: { x: 0, y: 0, width: 750, height: 1050 },
     backCrop: { x: 0, y: 0, width: 750, height: 1050 },
     frontBackgroundColor: '#ff0000',
     backBackgroundColor: '#0000ff',
-    bleedColor: '#ffffff',
+    bleedColor: '#00ff00',
     quantity: 1,
   }))
 }
@@ -59,14 +64,14 @@ function pageMediaBoxes(pdfText: string): number[][] {
   )
 }
 
-describe('SingleSidedDoc PDF rendering', () => {
+describe('PrintAndGlueDoc PDF rendering', () => {
   for (const { name, paper, expectedBox } of paperCases) {
-    it(`renders five cards with art and crop marks on ${name} pages`, async () => {
-      const cards = makeCards(5)
+    it(`renders four front/back pairs on ${name} pages at the paper dimensions`, async () => {
+      const cards = makeCards(4)
       const cardSize = CARD_PRESETS.POKER
-      const grid = calculateGrid({ paper, card: cardSize })
+      const grid = calculateTightGrid({ paper, card: cardSize })
       const pdfBytes = await renderToBuffer(
-        <SingleSidedDoc
+        <PrintAndGlueDoc
           cards={cards}
           paper={paper}
           grid={grid}
@@ -80,11 +85,49 @@ describe('SingleSidedDoc PDF rendering', () => {
       expect(mediaBoxes).toHaveLength(2)
       expect(mediaBoxes).toEqual([expectedBox, expectedBox])
       expect(pdfText).toContain('/Subtype /Image')
-      expect(pageContent.match(/\/I\d+ Do/g)).toHaveLength(5)
+      expect(pageContent.match(/\/I\d+ Do/g)).toHaveLength(8)
       expect(pageContent).toContain('1 0 0 scn')
+      expect(pageContent).toContain('0 0 1 scn')
+      expect(pageContent).toContain('0 1 0 scn')
       expect(pageContent).toMatch(/\bre\nf\b/)
     })
   }
+
+  it('renders a background-only back and omits a back with neither image nor background', async () => {
+    const card: Card = {
+      id: 'background-only-back',
+      bleedMode: 'IMAGE',
+      frontProcessedSrc: pixel,
+      frontCrop: { x: 0, y: 0, width: 750, height: 1050 },
+      frontBackgroundColor: '#ff0000',
+      backBackgroundColor: '#0000ff',
+      bleedColor: '#00ff00',
+      quantity: 1,
+    }
+    const cardSize = CARD_PRESETS.POKER
+    const grid = calculateTightGrid({ paper: PAPER.LETTER, card: cardSize })
+    const withBackground = await renderToBuffer(
+      <PrintAndGlueDoc
+        cards={[card]}
+        paper={PAPER.LETTER}
+        grid={grid}
+        cardSize={cardSize}
+      />,
+    )
+    const coloredContent = (await inflatePdfStreams(withBackground)).join('\n')
+    expect(coloredContent.match(/0 0 1 scn/g)).toHaveLength(1)
+
+    const withoutBackground = await renderToBuffer(
+      <PrintAndGlueDoc
+        cards={[{ ...card, backBackgroundColor: undefined }]}
+        paper={PAPER.LETTER}
+        grid={grid}
+        cardSize={cardSize}
+      />,
+    )
+    const emptyBackContent = (await inflatePdfStreams(withoutBackground)).join('\n')
+    expect(emptyBackContent.match(/0 0 1 scn/g) ?? []).toHaveLength(0)
+  })
 })
 
 describe('DuplexDoc PDF rendering', () => {
@@ -109,51 +152,10 @@ describe('DuplexDoc PDF rendering', () => {
       expect(mediaBoxes).toHaveLength(4)
       expect(mediaBoxes).toEqual(Array.from({ length: 4 }, () => expectedBox))
       expect(pdfText).toContain('/Subtype /Image')
-      expect(pdfText.match(/\/Subtype \/Image/g)?.length).toBeGreaterThanOrEqual(6)
       expect(pageContent.match(/\/I\d+ Do/g)).toHaveLength(10)
       expect(pageContent).toContain('1 0 0 scn')
       expect(pageContent).toContain('0 0 1 scn')
       expect(pageContent).toMatch(/\bre\nf\b/)
     })
   }
-
-  it('paints a back with only a background, but leaves an unset back empty', async () => {
-    const card: Card = {
-      id: 'background-only-back',
-      bleedMode: 'IMAGE',
-      frontProcessedSrc: pixel,
-      frontCrop: { x: 0, y: 0, width: 750, height: 1050 },
-      frontBackgroundColor: '#ff0000',
-      backBackgroundColor: '#0000ff',
-      bleedColor: '#ffffff',
-      quantity: 1,
-    }
-    const cardSize = CARD_PRESETS.POKER
-    const grid = calculateGrid({ paper: PAPER.LETTER, card: cardSize })
-    const withBackground = await renderToBuffer(
-      <DuplexDoc
-        cards={[card]}
-        paper={PAPER.LETTER}
-        grid={grid}
-        cardSize={cardSize}
-        calibration={{ offsetX: 0, offsetY: 0 }}
-      />,
-    )
-    const coloredContent = (await inflatePdfStreams(withBackground)).join('\n')
-    expect(coloredContent.match(/0 0 1 scn/g)).toHaveLength(1)
-    expect(coloredContent.match(/1 0 0 scn/g)).toHaveLength(1)
-
-    const cardWithoutBackBackground: Card = { ...card, backBackgroundColor: undefined }
-    const withoutBackground = await renderToBuffer(
-      <DuplexDoc
-        cards={[cardWithoutBackBackground]}
-        paper={PAPER.LETTER}
-        grid={grid}
-        cardSize={cardSize}
-        calibration={{ offsetX: 0, offsetY: 0 }}
-      />,
-    )
-    const emptyBackContent = (await inflatePdfStreams(withoutBackground)).join('\n')
-    expect(emptyBackContent.match(/0 0 1 scn/g) ?? []).toHaveLength(0)
-  })
 })

@@ -13,33 +13,46 @@ type CropMark = {
 type CropMarksProps = {
   placement: Placement
   cardSize: Size
+  bleed?: number
+  offset?: number
+  length?: number
 }
 
-function cropMarkRects(placement: Placement, cardSize: Size): CropMark[] {
-  const trimLeft = placement.x + DEFAULT_BLEED
-  const trimTop = placement.y + DEFAULT_BLEED
+function cropMarkRects(
+  placement: Placement,
+  cardSize: Size,
+  bleed: number,
+  offset: number,
+  length: number,
+): CropMark[] {
+  const trimLeft = placement.x + bleed
+  const trimTop = placement.y + bleed
   const trimRight = trimLeft + cardSize.width
   const trimBottom = trimTop + cardSize.height
-  const gap = 1
-  const length = 6
   const thickness = 0.5
 
   return [
-    { left: trimLeft - gap - length, top: trimTop - gap - thickness / 2, width: length, height: thickness },
-    { left: trimLeft - gap - thickness / 2, top: trimTop - gap - length, width: thickness, height: length },
-    { left: trimRight + gap, top: trimTop - gap - thickness / 2, width: length, height: thickness },
-    { left: trimRight + gap + thickness / 2, top: trimTop - gap - length, width: thickness, height: length },
-    { left: trimLeft - gap - length, top: trimBottom + gap, width: length, height: thickness },
-    { left: trimLeft - gap - thickness / 2, top: trimBottom + gap, width: thickness, height: length },
-    { left: trimRight + gap, top: trimBottom + gap, width: length, height: thickness },
-    { left: trimRight + gap + thickness / 2, top: trimBottom + gap, width: thickness, height: length },
+    { left: trimLeft - offset - length, top: trimTop - offset - thickness / 2, width: length, height: thickness },
+    { left: trimLeft - offset - thickness / 2, top: trimTop - offset - length, width: thickness, height: length },
+    { left: trimRight + offset, top: trimTop - offset - thickness / 2, width: length, height: thickness },
+    { left: trimRight + offset + thickness / 2, top: trimTop - offset - length, width: thickness, height: length },
+    { left: trimLeft - offset - length, top: trimBottom + offset, width: length, height: thickness },
+    { left: trimLeft - offset - thickness / 2, top: trimBottom + offset, width: thickness, height: length },
+    { left: trimRight + offset, top: trimBottom + offset, width: length, height: thickness },
+    { left: trimRight + offset + thickness / 2, top: trimBottom + offset, width: thickness, height: length },
   ]
 }
 
-export default function CropMarks({ placement, cardSize }: CropMarksProps) {
+export default function CropMarks({
+  placement,
+  cardSize,
+  bleed = DEFAULT_BLEED,
+  offset = 1,
+  length = 6,
+}: CropMarksProps) {
   return (
     <>
-      {cropMarkRects(placement, cardSize).map((mark, index) => (
+      {cropMarkRects(placement, cardSize, bleed, offset, length).map((mark, index) => (
         <View
           key={index}
           style={{

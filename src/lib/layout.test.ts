@@ -2,11 +2,16 @@ import { describe, expect, it } from 'vitest'
 import {
   CARD_PRESETS,
   calculateGrid,
+  calculateTightGrid,
   DEFAULT_BLEED,
   mmToPt,
   PAPER,
 } from './geometry.ts'
-import { layoutDuplexPages, layoutPages } from './layout.ts'
+import {
+  layoutDuplexPages,
+  layoutPages,
+  layoutPrintAndGlue,
+} from './layout.ts'
 import type { Card } from '../types.ts'
 
 function makeCard(
@@ -90,6 +95,112 @@ describe('layoutDuplexPages', () => {
     paper: PAPER.LETTER,
     card: CARD_PRESETS.POKER,
     bleed: DEFAULT_BLEED,
+  })
+
+  describe('layoutPrintAndGlue', () => {
+    const grid = calculateTightGrid({
+      paper: PAPER.LETTER,
+      card: CARD_PRESETS.POKER,
+    })
+
+    it('prints all fronts before backs and flows continuously across pages', () => {
+      const pages = layoutPrintAndGlue(
+        Array.from({ length: 4 }, (_, index) =>
+          makeCard(
+            `card-${index + 1}`,
+            1,
+            `front-${index + 1}`,
+            `back-${index + 1}`,
+          ),
+        ),
+        grid,
+      )
+      const pieces = pages.flatMap((page) => page.placements)
+
+      expect(pages).toHaveLength(2)
+      expect(pages.map((page) => page.placements.length)).toEqual([6, 2])
+      expect(pieces.map((placement) => placement.side)).toEqual([
+        'front',
+        'front',
+        'front',
+        'front',
+        'back',
+        'back',
+        'back',
+        'back',
+      ])
+      expect(pieces.map((placement) => placement.cardId)).toEqual([
+        'card-1',
+        'card-2',
+        'card-3',
+        'card-4',
+        'card-1',
+        'card-2',
+        'card-3',
+        'card-4',
+      ])
+      expect(grid.gap).toBeCloseTo(mmToPt(5))
+
+      const [firstFront, secondFront] = pages[0].placements
+      const firstTrimRight = firstFront.x + firstFront.paintedBleed + CARD_PRESETS.POKER.width
+      const secondTrimLeft = secondFront.x + secondFront.paintedBleed
+      expect(secondTrimLeft - firstTrimRight).toBeCloseTo(mmToPt(5))
+    })
+
+    it('keeps painted rectangles inside the page margins and non-overlapping', () => {
+      const cards = [
+        { ...makeCard('image-a', 1, 'front-a', 'back-a'), bleedMode: 'IMAGE' as const },
+        { ...makeCard('color-a', 1, 'front-b', 'back-b'), bleedMode: 'COLOR' as const },
+        { ...makeCard('image-b', 1, 'front-c', 'back-c'), bleedMode: 'IMAGE' as const },
+        { ...makeCard('color-b', 1, 'front-d', 'back-d'), bleedMode: 'COLOR' as const },
+      ]
+      const pages = layoutPrintAndGlue(cards, grid)
+      const margin = mmToPt(5)
+
+      for (const page of pages) {
+        for (let first = 0; first < page.placements.length; first += 1) {
+          const a = page.placements[first]
+          expect(a.x).toBeGreaterThanOrEqual(margin - 1e-8)
+          expect(a.y).toBeGreaterThanOrEqual(margin - 1e-8)
+          expect(a.x + a.width).toBeLessThanOrEqual(PAPER.LETTER.width - margin + 1e-8)
+          expect(a.y + a.height).toBeLessThanOrEqual(PAPER.LETTER.height - margin + 1e-8)
+
+          for (let second = first + 1; second < page.placements.length; second += 1) {
+            const b = page.placements[second]
+            const separated =
+              a.x + a.width <= b.x ||
+              b.x + b.width <= a.x ||
+              a.y + a.height <= b.y ||
+              b.y + b.height <= a.y
+            expect(separated).toBe(true)
+          }
+        }
+      }
+    })
+
+    it('skips a card without a front and omits a back without art or background', () => {
+      const noFront = makeCard('no-front', 1, undefined, 'back-art')
+      const noBack = makeCard('no-back', 1, 'front-art')
+      const pages = layoutPrintAndGlue([noFront, noBack], grid)
+
+      expect(pages).toHaveLength(1)
+      expect(pages[0].placements.map(({ cardId, side }) => [cardId, side])).toEqual([
+        ['no-back', 'front'],
+      ])
+    })
+
+    it('includes a solid-color back without a back image', () => {
+      const card = {
+        ...makeCard('solid-back', 1, 'front-art'),
+        backBackgroundColor: '#0000ff',
+      }
+      const pages = layoutPrintAndGlue([card], grid)
+
+      expect(pages.flatMap((page) => page.placements.map(({ side }) => side))).toEqual([
+        'front',
+        'back',
+      ])
+    })
   })
   const noCalibration = { offsetX: 0, offsetY: 0 }
 

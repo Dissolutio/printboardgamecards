@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   applyCalibration,
   calculateGrid,
+  calculateTightGrid,
   CARD_PRESETS,
   mirrorPageBacks,
   mmToPt,
@@ -51,6 +52,28 @@ describe('calculateGrid', () => {
 
     expect(grid.originX).toBe(18)
     expect(grid.originX).toBe((PAPER.LETTER.width - grid.gridW) / 2)
+  })
+})
+
+describe('calculateTightGrid', () => {
+  it('fits Poker cards on Letter paper in a 3 by 2 grid', () => {
+    const grid = calculateTightGrid({
+      paper: PAPER.LETTER,
+      card: CARD_PRESETS.POKER,
+    })
+
+    expect(grid.cols).toBe(3)
+    expect(grid.rows).toBe(2)
+  })
+
+  it('fits Poker cards on A4 paper in a 2 by 3 grid', () => {
+    const grid = calculateTightGrid({
+      paper: PAPER.A4,
+      card: CARD_PRESETS.POKER,
+    })
+
+    expect(grid.cols).toBe(2)
+    expect(grid.rows).toBe(3)
   })
 })
 

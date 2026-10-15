@@ -65,6 +65,53 @@ export function calculateGrid({
   }
 }
 
+export function calculateTightGrid({
+  paper,
+  card,
+  gap = mmToPt(5),
+  margin = mmToPt(5),
+}: {
+  paper: Size
+  card: Size
+  gap?: number
+  margin?: number
+}): {
+  cols: number
+  rows: number
+  cellW: number
+  cellH: number
+  gridW: number
+  gridH: number
+  originX: number
+  originY: number
+  gap: number
+} {
+  if (gap < 0 || margin < 0) {
+    throw new RangeError('Grid gap and margin must be non-negative.')
+  }
+
+  const usableW = paper.width - 2 * margin
+  const usableH = paper.height - 2 * margin
+  const cellW = card.width + gap
+  const cellH = card.height + gap
+  const cols = Math.floor((usableW + gap) / cellW)
+  const rows = Math.floor((usableH + gap) / cellH)
+  const gridW = cols > 0 ? cols * cellW - gap : 0
+  const gridH = rows > 0 ? rows * cellH - gap : 0
+
+  return {
+    cols,
+    rows,
+    cellW,
+    cellH,
+    gridW,
+    gridH,
+    originX: (paper.width - gridW) / 2,
+    originY: (paper.height - gridH) / 2,
+    gap,
+  }
+}
+
 export function mirrorPageBacks<T>(items: T[], cols: number): T[] {
   const mirrored = []
 

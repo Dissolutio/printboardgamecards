@@ -3,10 +3,11 @@ import { pdf } from '@react-pdf/renderer'
 import CardEditor from './components/CardEditor.tsx'
 import CardFace from './components/CardFace.tsx'
 import DuplexDoc from './pdf/DuplexDoc.tsx'
-import SingleSidedDoc from './pdf/SingleSidedDoc.tsx'
+import PrintAndGlueDoc from './pdf/PrintAndGlueDoc.tsx'
 import { addCard, deleteCard, duplicateCard, totalCopies } from './lib/deck.ts'
 import {
   calculateGrid,
+  calculateTightGrid,
   CARD_PRESETS,
   DEFAULT_BLEED,
   PAPER,
@@ -17,7 +18,7 @@ import { centeredMaximumCrop, convertCropForBleedMode } from './lib/cropConvert.
 import { loadImageSize, renderCrop } from './lib/renderCrop.ts'
 import {
   layoutDuplexPages,
-  layoutPages,
+  layoutPrintAndGlue,
   type Calibration,
 } from './lib/layout.ts'
 import type { BleedMode, Card, CardSide, PixelCropRect } from './types.ts'
@@ -28,7 +29,7 @@ const ZERO_CALIBRATION: Calibration = { offsetX: 0, offsetY: 0 }
 
 type PaperName = keyof typeof PAPER
 type PresetName = keyof typeof CARD_PRESETS
-type ExportMode = 'SINGLE' | 'DUPLEX'
+type ExportMode = 'PRINT_GLUE' | 'DUPLEX'
 
 function isPresetName(value: string): value is PresetName {
   return Object.prototype.hasOwnProperty.call(CARD_PRESETS, value)
@@ -152,7 +153,7 @@ function App() {
   const [presetName, setPresetName] = useState<PresetName>('POKER')
   const [isChangingPreset, setIsChangingPreset] = useState(false)
   const [paperName, setPaperName] = useState<PaperName>('LETTER')
-  const [exportMode, setExportMode] = useState<ExportMode>('SINGLE')
+  const [exportMode, setExportMode] = useState<ExportMode>('PRINT_GLUE')
   const [isExporting, setIsExporting] = useState(false)
   const [exportError, setExportError] = useState<string>()
   const [errors, setErrors] = useState<Record<CardSide, string | undefined>>({
@@ -163,10 +164,11 @@ function App() {
   const paper = PAPER[paperName]
   const cardSize = CARD_PRESETS[presetName]
   const grid = calculateGrid({ paper, card: cardSize, bleed: DEFAULT_BLEED })
+  const tightGrid = calculateTightGrid({ paper, card: cardSize })
   const selectedCard = cards.find((card) => card.id === selectedId)
   const pageCount =
-    exportMode === 'SINGLE'
-      ? layoutPages(cards, grid).length
+    exportMode === 'PRINT_GLUE'
+      ? layoutPrintAndGlue(cards, tightGrid).length
       : layoutDuplexPages(cards, grid, ZERO_CALIBRATION).length
 
   useEffect(
@@ -521,11 +523,11 @@ function App() {
         }),
       )
       const pdfDocument =
-        exportMode === 'SINGLE' ? (
-          <SingleSidedDoc
+        exportMode === 'PRINT_GLUE' ? (
+          <PrintAndGlueDoc
             cards={exportCards}
             paper={paper}
-            grid={grid}
+            grid={tightGrid}
             cardSize={cardSize}
           />
         ) : (
@@ -608,10 +610,12 @@ function App() {
                 className="select select-bordered w-full"
                 value={exportMode}
                 onChange={(event) =>
-                  setExportMode(event.currentTarget.value === 'DUPLEX' ? 'DUPLEX' : 'SINGLE')
+                  setExportMode(
+                    event.currentTarget.value === 'DUPLEX' ? 'DUPLEX' : 'PRINT_GLUE',
+                  )
                 }
               >
-                <option value="SINGLE">Single-sided</option>
+                <option value="PRINT_GLUE">Single-sided (print, cut, glue)</option>
                 <option value="DUPLEX">Double-sided hand-cut</option>
               </select>
             </label>
@@ -666,6 +670,12 @@ function App() {
                     Front crop required; this card will be skipped during export.
                   </p>
                 )}
+                {(!card.backProcessedSrc || !card.backCrop) &&
+                  card.backBackgroundColor === undefined && (
+                    <p className="mt-2 text-sm text-warning">
+                      No back image or background; no back piece will be printed.
+                    </p>
+                  )}
                 <div className="mt-3 flex gap-2">
                   <button
                     className="btn btn-sm btn-outline flex-1"
