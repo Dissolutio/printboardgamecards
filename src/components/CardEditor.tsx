@@ -25,6 +25,7 @@ type SideCropProps = {
   areaHeight: number
   bleedMode: BleedMode
   bleed: number
+  backgroundColor: string
   error?: string
   onImageSelect: (side: CardSide, file: File) => void
   onCropChange: (side: CardSide, crop: PixelCropRect) => void
@@ -40,6 +41,7 @@ function SideCrop({
   areaHeight,
   bleedMode,
   bleed,
+  backgroundColor,
   error,
   onImageSelect,
   onCropChange,
@@ -196,11 +198,15 @@ function SideCrop({
 
       {source ? (
         <>
-          <div className="flex min-h-56 max-w-full items-center justify-center overflow-hidden rounded-box bg-base-200 p-3">
+          <div
+            className="flex min-h-56 max-w-full items-center justify-center overflow-hidden rounded-box p-3"
+            style={{ backgroundColor }}
+          >
             <ReactCrop
               crop={displayCrop}
               aspect={aspect}
               keepSelection
+              style={{ backgroundColor }}
               onChange={handleCropChange}
               onComplete={handleCropComplete}
               renderSelectionAddon={
@@ -276,19 +282,32 @@ export default function CardEditor({
             />
           </label>
         </div>
-        {bleedMode === 'COLOR' && (
-          <label className="form-control mt-4 w-fit">
-            <span className="label-text mb-1">Bleed color</span>
+        <div className="mt-4 flex flex-wrap gap-4">
+          <label className="form-control w-fit">
+            <span className="label-text mb-1">Card background</span>
             <input
               className="input input-bordered h-12 w-20 p-1"
               type="color"
-              value={card.bleedColor}
+              value={card.backgroundColor}
               onChange={(event) =>
-                onCardChange({ ...card, bleedColor: event.currentTarget.value })
+                onCardChange({ ...card, backgroundColor: event.currentTarget.value })
               }
             />
           </label>
-        )}
+          {bleedMode === 'COLOR' && (
+            <label className="form-control w-fit">
+              <span className="label-text mb-1">Bleed color</span>
+              <input
+                className="input input-bordered h-12 w-20 p-1"
+                type="color"
+                value={card.bleedColor}
+                onChange={(event) =>
+                  onCardChange({ ...card, bleedColor: event.currentTarget.value })
+                }
+              />
+            </label>
+          )}
+        </div>
         <p className="mt-3 text-sm text-base-content/60">
           {DEFAULT_BLEED} pt bleed · Crop area {area.width} × {area.height} pt
         </p>
@@ -309,6 +328,7 @@ export default function CardEditor({
               areaHeight={area.height}
               bleedMode={bleedMode}
               bleed={DEFAULT_BLEED}
+              backgroundColor={card.backgroundColor}
               error={errors[side]}
               onImageSelect={onImageSelect}
               onCropChange={onCropChange}

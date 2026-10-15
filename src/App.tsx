@@ -29,9 +29,10 @@ function isPresetName(value: string): value is PresetName {
   return Object.prototype.hasOwnProperty.call(CARD_PRESETS, value)
 }
 
-function createCard(id: string): Card {
+function createCard(id: string, backgroundColor = '#ffffff'): Card {
   return {
     id,
+    backgroundColor,
     bleedColor: '#ffffff',
     quantity: 1,
   }
@@ -133,7 +134,8 @@ function App() {
   }
 
   function handleAddCard() {
-    const card = createCard(crypto.randomUUID())
+    const previousCard = cardsRef.current.at(-1)
+    const card = createCard(crypto.randomUUID(), previousCard?.backgroundColor)
     replaceCards(addCard(cardsRef.current, card))
     setSelectedId(card.id)
     setErrors({ front: undefined, back: undefined })
@@ -424,16 +426,35 @@ function App() {
                     setErrors({ front: undefined, back: undefined })
                   }}
                 >
-                  <span className="flex h-20 w-14 shrink-0 items-center justify-center overflow-hidden rounded bg-base-200">
-                    {card.frontProcessedSrc || card.frontSrc ? (
-                      <img
-                        className="h-full w-full object-cover"
-                        src={card.frontProcessedSrc ?? card.frontSrc}
-                        alt={`Card ${index + 1} front thumbnail`}
-                      />
-                    ) : (
-                      <span className="px-1 text-center text-xs text-base-content/50">No front</span>
-                    )}
+                  <span className="grid h-20 w-28 shrink-0 grid-cols-2 gap-1">
+                    {(['front', 'back'] as const).map((side) => {
+                      const source =
+                        side === 'front' ? card.frontProcessedSrc : card.backProcessedSrc
+                      return (
+                        <span
+                          key={side}
+                          className="flex min-w-0 items-center justify-center overflow-hidden rounded"
+                          style={{
+                            backgroundColor:
+                              bleedMode === 'COLOR' ? card.bleedColor : card.backgroundColor,
+                            padding: bleedMode === 'COLOR' ? 3 : 0,
+                          }}
+                        >
+                          {source ? (
+                            <img
+                              className="h-full w-full object-cover"
+                              src={source}
+                              alt={`Card ${index + 1} ${side} thumbnail`}
+                              style={{ backgroundColor: card.backgroundColor }}
+                            />
+                          ) : (
+                            <span className="px-1 text-center text-[10px] text-base-content/60">
+                              No {side}
+                            </span>
+                          )}
+                        </span>
+                      )
+                    })}
                   </span>
                   <span className="min-w-0">
                     <span className="block font-medium">Card {index + 1}</span>
@@ -442,7 +463,7 @@ function App() {
                     </span>
                   </span>
                 </button>
-                {!card.frontProcessedSrc && (
+                {(!card.frontProcessedSrc || !card.frontCrop) && (
                   <p className="mt-2 text-sm text-warning">
                     Front crop required; this card will be skipped during export.
                   </p>
@@ -533,12 +554,22 @@ function App() {
                       return (
                         <div key={side}>
                           <p className="mb-1 text-xs capitalize text-base-content/60">{side}</p>
-                          <div className="flex h-36 items-center justify-center overflow-hidden rounded-box bg-base-200 p-2">
+                          <div
+                            className="flex h-36 items-center justify-center overflow-hidden rounded-box p-2"
+                            style={{
+                              backgroundColor:
+                                bleedMode === 'COLOR' ? card.bleedColor : card.backgroundColor,
+                            }}
+                          >
                             {source ? (
                               <img
                                 className="max-h-full max-w-full object-contain"
                                 src={source}
                                 alt={`Card ${index + 1} ${side} print preview`}
+                                style={{
+                                  backgroundColor: card.backgroundColor,
+                                  border: bleedMode === 'COLOR' ? `3px solid ${card.bleedColor}` : undefined,
+                                }}
                               />
                             ) : (
                               <span className="text-center text-xs text-base-content/50">

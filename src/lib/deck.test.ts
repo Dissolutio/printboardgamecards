@@ -5,6 +5,7 @@ import type { Card } from '../types.ts'
 function createCard(id: string, quantity: number): Card {
   return {
     id,
+    backgroundColor: '#f5efe6',
     bleedColor: '#ffffff',
     quantity,
   }

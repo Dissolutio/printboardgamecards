@@ -15,6 +15,7 @@ export type Card = {
   backProcessedSrc?: string
   frontCrop?: PixelCropRect
   backCrop?: PixelCropRect
+  backgroundColor: string
   bleedColor: string
   quantity: number
 }

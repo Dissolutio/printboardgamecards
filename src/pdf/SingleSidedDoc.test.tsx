@@ -5,7 +5,7 @@ import type { Card } from '../types.ts'
 import DuplexDoc from './DuplexDoc.tsx'
 import SingleSidedDoc from './SingleSidedDoc.tsx'
 
-const pixel = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg=='
+const pixel = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAXpeqz8AAAAASUVORK5CYII='
 const distinctBacks = [
   'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGN4JiICAALyAQ91Qg2iAAAAAElFTkSuQmCC',
   'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGMQOSECAAHkAPFPiolyAAAAAElFTkSuQmCC',
@@ -26,6 +26,7 @@ function makeCards(count: number): Card[] {
     backProcessedSrc: distinctBacks[index],
     frontCrop: { x: 0, y: 0, width: 750, height: 1050 },
     backCrop: { x: 0, y: 0, width: 750, height: 1050 },
+    backgroundColor: '#ff0000',
     bleedColor: '#ffffff',
     quantity: 1,
   }))
@@ -79,6 +80,7 @@ describe('SingleSidedDoc PDF rendering', () => {
       expect(mediaBoxes).toEqual([expectedBox, expectedBox])
       expect(pdfText).toContain('/Subtype /Image')
       expect(pageContent.match(/\/I\d+ Do/g)).toHaveLength(5)
+      expect(pageContent).toContain('1 0 0 scn')
       expect(pageContent).toMatch(/\bre\nf\b/)
     })
   }
