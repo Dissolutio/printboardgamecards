@@ -2,13 +2,12 @@ import CardPiece from './CardPiece.tsx'
 import CropMarks from './CropMarks.tsx'
 import type { Size } from '../lib/geometry.ts'
 import type { Placement } from '../lib/layout.ts'
-import type { BleedMode, Card, CardSide } from '../types.ts'
+import type { Card, CardSide } from '../types.ts'
 
 type PrintPageProps = {
   placements: Placement[]
   cards: Card[]
   cardSize: Size
-  bleedMode: BleedMode
   side: CardSide
   drawCropMarks: boolean
 }
@@ -17,7 +16,6 @@ export default function PrintPage({
   placements,
   cards,
   cardSize,
-  bleedMode,
   side,
   drawCropMarks,
 }: PrintPageProps) {
@@ -35,7 +33,6 @@ export default function PrintPage({
             card={card}
             placement={placement}
             cardSize={cardSize}
-            bleedMode={bleedMode}
             side={side}
           />
         )

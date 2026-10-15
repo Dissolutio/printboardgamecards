@@ -7,6 +7,7 @@ const transparentPng = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCA
 
 const card: Card = {
   id: 'two-sided',
+  bleedMode: 'IMAGE',
   frontProcessedSrc: transparentPng,
   backProcessedSrc: transparentPng,
   frontBackgroundColor: '#ff0000',
@@ -46,6 +47,7 @@ describe('CardFace', () => {
   it('uses a paper-colored placeholder instead of an unset side bleed color', () => {
     const cardWithoutBack: Card = {
       id: 'empty-back',
+      bleedMode: 'COLOR',
       bleedColor: '#00ff00',
       quantity: 1,
     }

@@ -1,18 +1,23 @@
-import { useEffect, useRef, useState, type CSSProperties, type SyntheticEvent } from 'react'
-import ReactCrop, { type PixelCrop } from 'react-image-crop'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import Cropper, { type Area, type MediaSize, type Point } from 'react-easy-crop'
 import CardFace from './CardFace.tsx'
 import type { Size } from '../lib/geometry.ts'
 import { DEFAULT_BLEED } from '../lib/geometry.ts'
 import { cropAreaSize, effectiveDpi, isLowRes } from '../lib/crop.ts'
 import { backgroundFor } from '../lib/piece.ts'
+import { centeredMaximumCrop } from '../lib/cropConvert.ts'
+import { renderCrop } from '../lib/renderCrop.ts'
 import type { BleedMode, Card, CardSide, PixelCropRect } from '../types.ts'
+
+const MIN_ZOOM = 0.01
+const MAX_ZOOM = 10
 
 type CardEditorProps = {
   card: Card
   cardSize: Size
-  bleedMode: BleedMode
   errors: Record<CardSide, string | undefined>
   onCardChange: (card: Card) => void
+  onBleedModeChange: (cardId: string, mode: BleedMode) => void
   onImageSelect: (side: CardSide, file: File) => void
   onCropChange: (side: CardSide, crop: PixelCropRect) => void
   onProcessedImage: (side: CardSide, blob: Blob) => void
@@ -23,6 +28,7 @@ type SideCropProps = {
   card: Card
   side: CardSide
   source: string
+  processedSource?: string
   crop?: PixelCropRect
   cardSize: Size
   areaWidth: number
@@ -39,10 +45,15 @@ type SideCropProps = {
   onBackgroundChange: (side: CardSide, color: string) => void
 }
 
+function asCrop(area: Area): PixelCropRect {
+  return { x: area.x, y: area.y, width: area.width, height: area.height }
+}
+
 function SideCrop({
   card,
   side,
   source,
+  processedSource,
   crop,
   cardSize,
   areaWidth,
@@ -58,128 +69,150 @@ function SideCrop({
   onBackgroundToggle,
   onBackgroundChange,
 }: SideCropProps) {
-  const imageRef = useRef<HTMLImageElement>(null)
+  const workspaceRef = useRef<HTMLDivElement>(null)
   const renderId = useRef(0)
-  const [imageDimensions, setImageDimensions] = useState<{
-    width: number
-    height: number
-    naturalWidth: number
-    naturalHeight: number
-  }>()
+  const latestCrop = useRef<PixelCropRect | undefined>(undefined)
+  const sliderChanging = useRef(false)
+  const zoomCommitTimer = useRef<number | undefined>(undefined)
+  const seededMissingCrop = useRef(false)
+  const [workspaceSize, setWorkspaceSize] = useState({ width: 0, height: 0 })
+  const [cropPosition, setCropPosition] = useState<Point>({ x: 0, y: 0 })
+  const [zoom, setZoom] = useState(1)
+  const [mediaSize, setMediaSize] = useState<MediaSize | undefined>(undefined)
   const aspect = areaWidth / areaHeight
-  const scaleX = imageDimensions ? imageDimensions.naturalWidth / imageDimensions.width : 1
-  const scaleY = imageDimensions ? imageDimensions.naturalHeight / imageDimensions.height : 1
-  const displayCrop: PixelCrop | undefined = crop
-    ? {
-        unit: 'px',
-        x: crop.x / scaleX,
-        y: crop.y / scaleY,
-        width: crop.width / scaleX,
-        height: crop.height / scaleY,
-      }
-    : undefined
-  const trimLineStyle: CSSProperties = {
-    top: `${(bleed / areaHeight) * 100}%`,
-    right: `${(bleed / areaWidth) * 100}%`,
-    bottom: `${(bleed / areaHeight) * 100}%`,
-    left: `${(bleed / areaWidth) * 100}%`,
-  }
+  const visibleBackground = backgroundFor(card, side)
+  const frameSize = useMemo(() => {
+    if (workspaceSize.width <= 0 || workspaceSize.height <= 0) return undefined
+
+    const ringFactor =
+      bleedMode === 'COLOR' ? (2 * bleed) / cardSize.width : 0
+    const frameWidth = Math.min(
+      (workspaceSize.width - 32) / (1 + ringFactor),
+      (workspaceSize.height - 32) / (1 / aspect + ringFactor),
+    )
+    if (frameWidth <= 0) return undefined
+
+    return { width: frameWidth, height: frameWidth / aspect }
+  }, [
+    aspect,
+    bleed,
+    bleedMode,
+    cardSize.width,
+    workspaceSize.height,
+    workspaceSize.width,
+  ])
+  const initialAreaKey = crop
+    ? `${crop.x}:${crop.y}:${crop.width}:${crop.height}`
+    : 'fill'
+
+  useEffect(() => {
+    const workspace = workspaceRef.current
+    if (!workspace) return
+
+    const observer = new ResizeObserver(([entry]) => {
+      setWorkspaceSize({
+        width: entry.contentRect.width,
+        height: entry.contentRect.height,
+      })
+    })
+    observer.observe(workspace)
+    return () => observer.disconnect()
+  }, [])
 
   useEffect(
     () => () => {
       renderId.current += 1
+      if (zoomCommitTimer.current !== undefined) {
+        window.clearTimeout(zoomCommitTimer.current)
+      }
     },
     [],
   )
 
-  function toNaturalCrop(pixelCrop: PixelCrop): PixelCropRect | undefined {
-    const currentImage = imageRef.current
-    if (!currentImage?.width || !currentImage.height) return undefined
-
-    const naturalScaleX = currentImage.naturalWidth / currentImage.width
-    const naturalScaleY = currentImage.naturalHeight / currentImage.height
-    return {
-      x: pixelCrop.x * naturalScaleX,
-      y: pixelCrop.y * naturalScaleY,
-      width: pixelCrop.width * naturalScaleX,
-      height: pixelCrop.height * naturalScaleY,
-    }
-  }
-
-  function handleCropChange(pixelCrop: PixelCrop) {
-    renderId.current += 1
-    const naturalCrop = toNaturalCrop(pixelCrop)
-    if (naturalCrop) onCropChange(side, naturalCrop)
-  }
-
-  function handleCropComplete(pixelCrop: PixelCrop) {
-    const currentImage = imageRef.current
-    const naturalCrop = toNaturalCrop(pixelCrop)
-    if (!currentImage || !naturalCrop) return
+  function commitCrop(nextCrop: PixelCropRect) {
+    latestCrop.current = nextCrop
+    onCropChange(side, nextCrop)
 
     const currentRenderId = ++renderId.current
-    const canvas = document.createElement('canvas')
-    canvas.width = Math.round((areaWidth * 300) / 72)
-    canvas.height = Math.round((areaHeight * 300) / 72)
-
-    const context = canvas.getContext('2d')
-    if (!context) {
-      onError(side, 'Could not prepare the crop preview.')
-      return
-    }
-
-    context.drawImage(
-      currentImage,
-      naturalCrop.x,
-      naturalCrop.y,
-      naturalCrop.width,
-      naturalCrop.height,
-      0,
-      0,
-      canvas.width,
-      canvas.height,
-    )
-    canvas.toBlob((blob) => {
-      if (currentRenderId !== renderId.current) return
-      if (!blob) {
-        onError(side, 'Could not create the crop preview.')
-        return
-      }
-
-      onError(side, undefined)
-      onProcessedImage(side, blob)
-    }, 'image/png')
+    void renderCrop(source, nextCrop, { width: areaWidth, height: areaHeight })
+      .then((blob) => {
+        if (currentRenderId !== renderId.current) return
+        onError(side, undefined)
+        onProcessedImage(side, blob)
+      })
+      .catch((renderError: unknown) => {
+        if (currentRenderId !== renderId.current) return
+        onError(
+          side,
+          renderError instanceof Error
+            ? renderError.message
+            : 'Could not create the crop preview.',
+        )
+      })
   }
 
-  function handleImageLoad(event: SyntheticEvent<HTMLImageElement>) {
-    const loadedImage = event.currentTarget
-    setImageDimensions({
-      width: loadedImage.width,
-      height: loadedImage.height,
-      naturalWidth: loadedImage.naturalWidth,
-      naturalHeight: loadedImage.naturalHeight,
-    })
-    if (crop || !loadedImage.width || !loadedImage.height) return
+  function handleMediaLoaded(size: MediaSize) {
+    setMediaSize(size)
+    if (crop || seededMissingCrop.current) return
 
-    const displayWidth = loadedImage.width
-    const displayHeight = loadedImage.height
-    let cropWidth = Math.min(displayWidth, displayHeight * aspect)
-    let cropHeight = cropWidth / aspect
-    if (cropHeight > displayHeight) {
-      cropHeight = displayHeight
-      cropWidth = cropHeight * aspect
+    seededMissingCrop.current = true
+    const initialCrop = centeredMaximumCrop(
+      { width: size.naturalWidth, height: size.naturalHeight },
+      { width: areaWidth, height: areaHeight },
+    )
+    commitCrop(initialCrop)
+  }
+
+  function handleCropComplete(_area: Area, areaPixels: Area) {
+    const nextCrop = asCrop(areaPixels)
+    latestCrop.current = nextCrop
+    if (!sliderChanging.current) commitCrop(nextCrop)
+  }
+
+  function handleZoomChange(value: number) {
+    sliderChanging.current = true
+    setZoom(value)
+    if (zoomCommitTimer.current !== undefined) {
+      window.clearTimeout(zoomCommitTimer.current)
     }
+    zoomCommitTimer.current = window.setTimeout(() => {
+      sliderChanging.current = false
+      if (latestCrop.current) commitCrop(latestCrop.current)
+    }, 180)
+  }
 
-    handleCropChange({
-      unit: 'px',
-      x: (displayWidth - cropWidth) / 2,
-      y: (displayHeight - cropHeight) / 2,
-      width: cropWidth,
-      height: cropHeight,
-    })
+  function setFraming(mode: 'FILL' | 'FIT') {
+    if (!mediaSize) return
+
+    const imageSize = {
+      width: mediaSize.naturalWidth,
+      height: mediaSize.naturalHeight,
+    }
+    const targetArea = { width: areaWidth, height: areaHeight }
+    let nextCrop: PixelCropRect
+    if (mode === 'FILL') {
+      nextCrop = centeredMaximumCrop(imageSize, targetArea)
+    } else {
+      const scale = Math.max(
+        imageSize.width / targetArea.width,
+        imageSize.height / targetArea.height,
+      )
+      const width = targetArea.width * scale
+      const height = targetArea.height * scale
+      nextCrop = {
+        x: (imageSize.width - width) / 2,
+        y: (imageSize.height - height) / 2,
+        width,
+        height,
+      }
+    }
+    commitCrop(nextCrop)
   }
 
   const dpi = crop ? effectiveDpi(crop.width, areaWidth) : undefined
+  const bleedInsetX = frameSize ? (bleed / areaWidth) * frameSize.width : 0
+  const bleedInsetY = frameSize ? (bleed / areaHeight) * frameSize.height : 0
+  const ringWidth = frameSize ? (bleed / cardSize.width) * frameSize.width : 0
 
   return (
     <section className="rounded-box border border-base-300 bg-base-100 p-4">
@@ -229,47 +262,136 @@ function SideCrop({
         />
       </label>
 
-      <CardFace
-        card={card}
-        side={side}
-        cardSize={cardSize}
-        showBleedRing={bleedMode === 'COLOR'}
-        aspectIncludesBleed
-        source={source}
-        placeholder={side === 'front' ? 'Crop required' : 'No back'}
-        className="mx-auto max-w-[300px]"
-      >
-        {source ? (
-          <ReactCrop
-            crop={displayCrop}
-            aspect={aspect}
-            keepSelection
-            className="h-full w-full"
-            style={{ height: '100%', width: '100%' }}
-            onChange={handleCropChange}
-            onComplete={handleCropComplete}
-            renderSelectionAddon={
-              bleedMode === 'IMAGE'
-                ? () => <div className="trim-line" style={trimLineStyle} />
-                : undefined
-            }
-          >
-            <img
-              ref={imageRef}
-              src={source}
-              alt={`${side} crop`}
-              onLoad={handleImageLoad}
-              onError={() => onError(side, 'This image could not be loaded. Try another file.')}
+      {source ? (
+        <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(140px,220px)]">
+          <div>
+            <div
+              ref={workspaceRef}
+              className="cropper-workspace relative w-full overflow-hidden rounded-box"
               style={{
-                display: 'block',
-                width: '100%',
-                height: '100%',
-                objectFit: 'fill',
+                height: 'min(70vh, 520px)',
+                maxHeight: '70vh',
+                backgroundColor: visibleBackground,
               }}
+              aria-label={`${side} image crop workspace`}
+            >
+              {frameSize && (
+                <Cropper
+                  key={`${source}:${areaWidth}:${areaHeight}:${initialAreaKey}`}
+                  image={source}
+                  crop={cropPosition}
+                  zoom={zoom}
+                  minZoom={MIN_ZOOM}
+                  maxZoom={MAX_ZOOM}
+                  aspect={aspect}
+                  cropSize={frameSize}
+                  cropShape="rect"
+                  objectFit="contain"
+                  restrictPosition={false}
+                  showGrid={false}
+                  initialCroppedAreaPixels={crop}
+                  mediaProps={{
+                    alt: `${side} crop source`,
+                    onError: () =>
+                      onError(side, 'This image could not be loaded. Try another file.'),
+                  }}
+                  style={{
+                    containerStyle: { width: '100%', height: '100%' },
+                  }}
+                  onCropChange={setCropPosition}
+                  onZoomChange={setZoom}
+                  onCropAreaChange={(_area, areaPixels) => {
+                    latestCrop.current = asCrop(areaPixels)
+                  }}
+                  onCropComplete={handleCropComplete}
+                  onMediaLoaded={handleMediaLoaded}
+                />
+              )}
+              {frameSize && bleedMode === 'COLOR' && (
+                <div
+                  aria-hidden="true"
+                  className="crop-bleed-ring pointer-events-none absolute left-1/2 top-1/2 z-10"
+                  style={{
+                    width: frameSize.width,
+                    height: frameSize.height,
+                    boxSizing: 'border-box',
+                    boxShadow: `0 0 0 ${ringWidth}px ${card.bleedColor}`,
+                    transform: 'translate(-50%, -50%)',
+                  }}
+                />
+              )}
+              {frameSize && bleedMode === 'IMAGE' && (
+                <div
+                  aria-hidden="true"
+                  className="trim-line pointer-events-none absolute left-1/2 top-1/2 z-10"
+                  style={{
+                    width: frameSize.width - 2 * bleedInsetX,
+                    height: frameSize.height - 2 * bleedInsetY,
+                    transform: 'translate(-50%, -50%)',
+                  }}
+                />
+              )}
+            </div>
+
+            <div className="mt-3 flex flex-wrap items-center gap-3">
+              <button
+                className="btn btn-sm btn-outline"
+                type="button"
+                onClick={() => setFraming('FILL')}
+                disabled={!mediaSize}
+              >
+                Fill
+              </button>
+              <button
+                className="btn btn-sm btn-outline"
+                type="button"
+                onClick={() => setFraming('FIT')}
+                disabled={!mediaSize}
+              >
+                Fit
+              </button>
+              <label className="form-control min-w-40 flex-1">
+                <span className="label-text mb-1">Zoom · {zoom.toFixed(2)}×</span>
+                <input
+                  className="range range-primary range-sm"
+                  type="range"
+                  min={MIN_ZOOM}
+                  max={MAX_ZOOM}
+                  step={0.01}
+                  value={zoom}
+                  onChange={(event) => handleZoomChange(Number(event.currentTarget.value))}
+                />
+              </label>
+            </div>
+          </div>
+
+          <div className="min-w-0">
+            <p className="mb-2 text-sm font-medium">Live result</p>
+            <CardFace
+              card={card}
+              side={side}
+              cardSize={cardSize}
+              showBleedRing={bleedMode === 'COLOR'}
+              aspectIncludesBleed={bleedMode === 'IMAGE'}
+              source={processedSource}
+              placeholder={side === 'front' ? 'Crop required' : 'No back'}
+              alt={`${side} live crop result`}
             />
-          </ReactCrop>
-        ) : undefined}
-      </CardFace>
+          </div>
+        </div>
+      ) : (
+        <div className="mx-auto max-w-[300px]">
+          <CardFace
+            card={card}
+            side={side}
+            cardSize={cardSize}
+            showBleedRing={bleedMode === 'COLOR'}
+            aspectIncludesBleed={bleedMode === 'IMAGE'}
+            placeholder={side === 'front' ? 'Crop required' : 'No back'}
+          />
+        </div>
+      )}
+
       {source && dpi !== undefined && isLowRes(dpi) && (
         <p className="mt-2 text-sm text-warning">
           This crop is below 200 DPI and may print blurry.
@@ -287,15 +409,15 @@ function SideCrop({
 export default function CardEditor({
   card,
   cardSize,
-  bleedMode,
   errors,
   onCardChange,
+  onBleedModeChange,
   onImageSelect,
   onCropChange,
   onProcessedImage,
   onError,
 }: CardEditorProps) {
-  const area = cropAreaSize(cardSize, DEFAULT_BLEED, bleedMode)
+  const area = cropAreaSize(cardSize, DEFAULT_BLEED, card.bleedMode)
 
   return (
     <div className="space-y-6">
@@ -321,7 +443,28 @@ export default function CardEditor({
             />
           </label>
         </div>
-        {bleedMode === 'COLOR' && (
+        <fieldset className="mt-4">
+          <legend className="mb-2 text-sm font-medium">Bleed mode for this card</legend>
+          <div className="join">
+            <button
+              className={`btn join-item ${card.bleedMode === 'IMAGE' ? 'btn-primary' : 'btn-outline'}`}
+              type="button"
+              aria-pressed={card.bleedMode === 'IMAGE'}
+              onClick={() => onBleedModeChange(card.id, 'IMAGE')}
+            >
+              Extend image
+            </button>
+            <button
+              className={`btn join-item ${card.bleedMode === 'COLOR' ? 'btn-primary' : 'btn-outline'}`}
+              type="button"
+              aria-pressed={card.bleedMode === 'COLOR'}
+              onClick={() => onBleedModeChange(card.id, 'COLOR')}
+            >
+              Solid color
+            </button>
+          </div>
+        </fieldset>
+        {card.bleedMode === 'COLOR' && (
           <label className="form-control mt-4 w-fit">
             <span className="label-text mb-1">Bleed color</span>
             <input
@@ -339,9 +482,11 @@ export default function CardEditor({
         </p>
       </section>
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="space-y-6">
         {(['front', 'back'] as const).map((side) => {
           const source = side === 'front' ? card.frontSrc : card.backSrc
+          const processedSource =
+            side === 'front' ? card.frontProcessedSrc : card.backProcessedSrc
           const crop = side === 'front' ? card.frontCrop : card.backCrop
           const backgroundKey =
             side === 'front' ? 'frontBackgroundColor' : 'backBackgroundColor'
@@ -349,15 +494,16 @@ export default function CardEditor({
 
           return (
             <SideCrop
-              key={`${side}-${source ?? 'empty'}-${area.width}-${area.height}`}
+              key={`${side}-${source ?? 'empty'}`}
               card={card}
               side={side}
               source={source ?? ''}
+              processedSource={processedSource}
               crop={crop}
               cardSize={cardSize}
               areaWidth={area.width}
               areaHeight={area.height}
-              bleedMode={bleedMode}
+              bleedMode={card.bleedMode}
               bleed={DEFAULT_BLEED}
               backgroundColor={sideBackground}
               error={errors[side]}

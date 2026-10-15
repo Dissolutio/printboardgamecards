@@ -17,6 +17,7 @@ function makeCard(
 ): Card {
   return {
     id,
+    bleedMode: 'IMAGE',
     frontProcessedSrc: frontSrc,
     backProcessedSrc: backSrc,
     frontCrop: frontSrc ? { x: 0, y: 0, width: 750, height: 1050 } : undefined,

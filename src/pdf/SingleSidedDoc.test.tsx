@@ -22,6 +22,7 @@ const paperCases = [
 function makeCards(count: number): Card[] {
   return Array.from({ length: count }, (_, index) => ({
     id: `poker-${index + 1}`,
+    bleedMode: 'IMAGE',
     frontProcessedSrc: pixel,
     backProcessedSrc: distinctBacks[index],
     frontCrop: { x: 0, y: 0, width: 750, height: 1050 },
@@ -70,7 +71,6 @@ describe('SingleSidedDoc PDF rendering', () => {
           paper={paper}
           grid={grid}
           cardSize={cardSize}
-          bleedMode="IMAGE"
         />,
       )
       const pdfText = new TextDecoder('latin1').decode(pdfBytes)
@@ -99,7 +99,6 @@ describe('DuplexDoc PDF rendering', () => {
           paper={paper}
           grid={grid}
           cardSize={cardSize}
-          bleedMode="IMAGE"
           calibration={{ offsetX: 0, offsetY: 0 }}
         />,
       )
@@ -121,6 +120,7 @@ describe('DuplexDoc PDF rendering', () => {
   it('paints a back with only a background, but leaves an unset back empty', async () => {
     const card: Card = {
       id: 'background-only-back',
+      bleedMode: 'IMAGE',
       frontProcessedSrc: pixel,
       frontCrop: { x: 0, y: 0, width: 750, height: 1050 },
       frontBackgroundColor: '#ff0000',
@@ -136,7 +136,6 @@ describe('DuplexDoc PDF rendering', () => {
         paper={PAPER.LETTER}
         grid={grid}
         cardSize={cardSize}
-        bleedMode="IMAGE"
         calibration={{ offsetX: 0, offsetY: 0 }}
       />,
     )
@@ -151,7 +150,6 @@ describe('DuplexDoc PDF rendering', () => {
         paper={PAPER.LETTER}
         grid={grid}
         cardSize={cardSize}
-        bleedMode="IMAGE"
         calibration={{ offsetX: 0, offsetY: 0 }}
       />,
     )

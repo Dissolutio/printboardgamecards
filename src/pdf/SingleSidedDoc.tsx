@@ -1,7 +1,6 @@
 import { Document, Page, View } from '@react-pdf/renderer'
 import type { Size } from '../lib/geometry.ts'
 import { layoutPages, type Grid } from '../lib/layout.ts'
-import type { BleedMode } from '../types.ts'
 import PrintPage from './PrintPage.tsx'
 import type { Card } from '../types.ts'
 
@@ -10,7 +9,6 @@ type SingleSidedDocProps = {
   paper: Size
   grid: Grid
   cardSize: Size
-  bleedMode: BleedMode
 }
 
 export default function SingleSidedDoc({
@@ -18,7 +16,6 @@ export default function SingleSidedDoc({
   paper,
   grid,
   cardSize,
-  bleedMode,
 }: SingleSidedDocProps) {
   const pages = layoutPages(cards, grid)
 
@@ -40,7 +37,6 @@ export default function SingleSidedDoc({
               placements={page.placements}
               cards={cards}
               cardSize={cardSize}
-              bleedMode={bleedMode}
               side="front"
               drawCropMarks
             />

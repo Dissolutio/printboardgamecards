@@ -5,7 +5,7 @@ import {
   type Calibration,
   type Grid,
 } from '../lib/layout.ts'
-import type { BleedMode, Card } from '../types.ts'
+import type { Card } from '../types.ts'
 import PrintPage from './PrintPage.tsx'
 
 type DuplexDocProps = {
@@ -13,7 +13,6 @@ type DuplexDocProps = {
   paper: Size
   grid: Grid
   cardSize: Size
-  bleedMode: BleedMode
   calibration: Calibration
 }
 
@@ -22,7 +21,6 @@ export default function DuplexDoc({
   paper,
   grid,
   cardSize,
-  bleedMode,
   calibration,
 }: DuplexDocProps) {
   const pagePairs = layoutDuplexPages(cards, grid, calibration)
@@ -45,7 +43,6 @@ export default function DuplexDoc({
               placements={pair.front}
               cards={cards}
               cardSize={cardSize}
-              bleedMode={bleedMode}
               side="front"
               drawCropMarks
             />
@@ -66,7 +63,6 @@ export default function DuplexDoc({
               placements={pair.back}
               cards={cards}
               cardSize={cardSize}
-              bleedMode={bleedMode}
               side="back"
               drawCropMarks={false}
             />

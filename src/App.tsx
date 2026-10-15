@@ -10,7 +10,11 @@ import {
   CARD_PRESETS,
   DEFAULT_BLEED,
   PAPER,
+  type Size,
 } from './lib/geometry.ts'
+import { cropAreaSize } from './lib/crop.ts'
+import { centeredMaximumCrop, convertCropForBleedMode } from './lib/cropConvert.ts'
+import { loadImageSize, renderCrop } from './lib/renderCrop.ts'
 import {
   layoutDuplexPages,
   layoutPages,
@@ -33,6 +37,7 @@ function isPresetName(value: string): value is PresetName {
 function createCard(id: string, previous?: Card): Card {
   return {
     id,
+    bleedMode: previous?.bleedMode ?? 'IMAGE',
     frontBackgroundColor: previous?.frontBackgroundColor,
     backBackgroundColor: previous?.backBackgroundColor,
     bleedColor: previous?.bleedColor ?? '#ffffff',
@@ -47,6 +52,57 @@ function objectUrls(card: Card): string[] {
     card.frontProcessedSrc,
     card.backProcessedSrc,
   ].filter((url): url is string => url !== undefined && url.startsWith('blob:'))
+}
+
+function sideSource(card: Card, side: CardSide): string | undefined {
+  return side === 'front' ? card.frontSrc : card.backSrc
+}
+
+function sideCrop(card: Card, side: CardSide): PixelCropRect | undefined {
+  return side === 'front' ? card.frontCrop : card.backCrop
+}
+
+function sideProcessedSource(card: Card, side: CardSide): string | undefined {
+  return side === 'front' ? card.frontProcessedSrc : card.backProcessedSrc
+}
+
+function withSideCrop(
+  card: Card,
+  side: CardSide,
+  crop: PixelCropRect | undefined,
+  processedSource: string | undefined,
+): Card {
+  return side === 'front'
+    ? { ...card, frontCrop: crop, frontProcessedSrc: processedSource }
+    : { ...card, backCrop: crop, backProcessedSrc: processedSource }
+}
+
+async function prepareSideCrop(
+  card: Card,
+  side: CardSide,
+  cardSize: Size,
+  targetMode: BleedMode,
+  convertExistingCrop: boolean,
+): Promise<{ crop: PixelCropRect; blob: Blob } | undefined> {
+  const source = sideSource(card, side)
+  if (!source) return undefined
+
+  const imageSize = await loadImageSize(source)
+  const areaSize = cropAreaSize(cardSize, DEFAULT_BLEED, targetMode)
+  const existingCrop = sideCrop(card, side)
+  const crop =
+    convertExistingCrop && existingCrop
+      ? convertCropForBleedMode(
+          existingCrop,
+          imageSize,
+          cardSize,
+          DEFAULT_BLEED,
+          card.bleedMode,
+          targetMode,
+        )
+      : centeredMaximumCrop(imageSize, areaSize)
+
+  return { crop, blob: await renderCrop(source, crop, areaSize) }
 }
 
 async function blobUrlToDataUrl(url: string): Promise<string> {
@@ -88,9 +144,13 @@ function downloadPdfBlob(blob: Blob, filename: string) {
 function App() {
   const [cards, setCards] = useState<Card[]>(() => [createCard('card-1')])
   const cardsRef = useRef(cards)
+  const cardOperationTokens = useRef(new Map<string, number>())
+  const presetGeneration = useRef(0)
+  const presetInProgress = useRef(false)
+  const appliedPreset = useRef<PresetName>('POKER')
   const [selectedId, setSelectedId] = useState('card-1')
   const [presetName, setPresetName] = useState<PresetName>('POKER')
-  const [bleedMode, setBleedMode] = useState<BleedMode>('IMAGE')
+  const [isChangingPreset, setIsChangingPreset] = useState(false)
   const [paperName, setPaperName] = useState<PaperName>('LETTER')
   const [exportMode, setExportMode] = useState<ExportMode>('SINGLE')
   const [isExporting, setIsExporting] = useState(false)
@@ -135,6 +195,16 @@ function App() {
     replaceCards(nextCards)
   }
 
+  function beginCardOperation(cardId: string): number {
+    const token = (cardOperationTokens.current.get(cardId) ?? 0) + 1
+    cardOperationTokens.current.set(cardId, token)
+    return token
+  }
+
+  function isCurrentCardOperation(cardId: string, token: number): boolean {
+    return cardOperationTokens.current.get(cardId) === token
+  }
+
   function handleAddCard() {
     const card = createCard(crypto.randomUUID(), cardsRef.current.at(-1))
     replaceCards(addCard(cardsRef.current, card))
@@ -170,24 +240,66 @@ function App() {
     const sourceKey = side === 'front' ? 'frontSrc' : 'backSrc'
     const processedKey = side === 'front' ? 'frontProcessedSrc' : 'backProcessedSrc'
     const cropKey = side === 'front' ? 'frontCrop' : 'backCrop'
+    const operationToken = beginCardOperation(currentCard.id)
+    const presetForOperation = appliedPreset.current
     const nextSourceUrl = URL.createObjectURL(file)
-    const nextCard = {
-      ...currentCard,
-      [sourceKey]: nextSourceUrl,
-      [processedKey]: undefined,
-      [cropKey]: undefined,
-    }
-    const nextCards = cardsRef.current.map((card) =>
-      card.id === currentCard.id ? nextCard : card,
-    )
-    replaceCards(nextCards)
-    revokeUnusedUrls(
-      [currentCard[sourceKey], currentCard[processedKey]].filter(
-        (url): url is string => url !== undefined,
-      ),
-      nextCards,
-    )
     setErrors((current) => ({ ...current, [side]: undefined }))
+
+    void (async () => {
+      let nextProcessedUrl: string | undefined
+      try {
+        const imageSize = await loadImageSize(nextSourceUrl)
+        const operationCardSize = CARD_PRESETS[presetForOperation]
+        const areaSize = cropAreaSize(
+          operationCardSize,
+          DEFAULT_BLEED,
+          currentCard.bleedMode,
+        )
+        const crop = centeredMaximumCrop(imageSize, areaSize)
+        const blob = await renderCrop(nextSourceUrl, crop, areaSize)
+        nextProcessedUrl = URL.createObjectURL(blob)
+
+        const latestCard = cardsRef.current.find((card) => card.id === currentCard.id)
+        if (
+          !isCurrentCardOperation(currentCard.id, operationToken) ||
+          appliedPreset.current !== presetForOperation ||
+          !latestCard ||
+          latestCard[sourceKey] !== currentCard[sourceKey]
+        ) {
+          URL.revokeObjectURL(nextSourceUrl)
+          URL.revokeObjectURL(nextProcessedUrl)
+          return
+        }
+
+        const nextCard = {
+          ...latestCard,
+          [sourceKey]: nextSourceUrl,
+          [processedKey]: nextProcessedUrl,
+          [cropKey]: crop,
+        }
+        const nextCards = cardsRef.current.map((card) =>
+          card.id === latestCard.id ? nextCard : card,
+        )
+        replaceCards(nextCards)
+        revokeUnusedUrls(
+          [latestCard[sourceKey], latestCard[processedKey]].filter(
+            (url): url is string => url !== undefined,
+          ),
+          nextCards,
+        )
+      } catch (error) {
+        URL.revokeObjectURL(nextSourceUrl)
+        if (nextProcessedUrl) URL.revokeObjectURL(nextProcessedUrl)
+        if (isCurrentCardOperation(currentCard.id, operationToken)) {
+          setErrors((current) => ({
+            ...current,
+            [side]: error instanceof Error
+              ? error.message
+              : 'Could not process this image.',
+          }))
+        }
+      }
+    })()
   }
 
   function handleCropChange(side: CardSide, crop: PixelCropRect) {
@@ -195,16 +307,12 @@ function App() {
     if (!currentCard) return
 
     const cropKey = side === 'front' ? 'frontCrop' : 'backCrop'
-    const processedKey = side === 'front' ? 'frontProcessedSrc' : 'backProcessedSrc'
-    const nextCard = { ...currentCard, [cropKey]: crop, [processedKey]: undefined }
+    beginCardOperation(currentCard.id)
+    const nextCard = { ...currentCard, [cropKey]: crop }
     const nextCards = cardsRef.current.map((card) =>
       card.id === currentCard.id ? nextCard : card,
     )
     replaceCards(nextCards)
-    revokeUnusedUrls(
-      currentCard[processedKey] ? [currentCard[processedKey]] : [],
-      nextCards,
-    )
     setErrors((current) => ({ ...current, [side]: undefined }))
   }
 
@@ -232,34 +340,161 @@ function App() {
     setErrors((current) => ({ ...current, [side]: message }))
   }
 
-  function invalidateDeckCrops() {
-    const currentCards = cardsRef.current
-    const processedUrls = currentCards.flatMap((card) => [
-      card.frontProcessedSrc,
-      card.backProcessedSrc,
-    ].filter((url): url is string => url !== undefined))
-    const nextCards = currentCards.map((card) => ({
-      ...card,
-      frontCrop: undefined,
-      backCrop: undefined,
-      frontProcessedSrc: undefined,
-      backProcessedSrc: undefined,
-    }))
-    replaceCards(nextCards)
-    revokeUnusedUrls(processedUrls, nextCards)
-    setErrors({ front: undefined, back: undefined })
+  async function handlePresetChange(nextPreset: PresetName) {
+    if (nextPreset === presetName || presetInProgress.current) return
+
+    const generation = ++presetGeneration.current
+    presetInProgress.current = true
+    const originalCards = cardsRef.current
+    const nextSize = CARD_PRESETS[nextPreset]
+    const generatedUrls: string[] = []
+    setIsChangingPreset(true)
+    for (const card of originalCards) beginCardOperation(card.id)
+
+    try {
+      const nextCards = await Promise.all(
+        originalCards.map(async (card) => {
+          let nextCard = { ...card }
+          for (const side of SIDES) {
+            const result = await prepareSideCrop(
+              card,
+              side,
+              nextSize,
+              card.bleedMode,
+              false,
+            )
+            const processedSource = result
+              ? URL.createObjectURL(result.blob)
+              : undefined
+            if (processedSource) generatedUrls.push(processedSource)
+            nextCard = withSideCrop(
+              nextCard,
+              side,
+              result?.crop,
+              processedSource,
+            )
+          }
+          return nextCard
+        }),
+      )
+
+      if (generation !== presetGeneration.current) {
+        generatedUrls.forEach(URL.revokeObjectURL)
+        return
+      }
+      if (cardsRef.current !== originalCards) {
+        generatedUrls.forEach(URL.revokeObjectURL)
+        setExportError('The deck changed while updating the preset. Please try again.')
+        return
+      }
+
+      setPresetName(nextPreset)
+      appliedPreset.current = nextPreset
+      replaceCards(nextCards)
+      revokeUnusedUrls(
+        originalCards.flatMap((card) => [
+          card.frontProcessedSrc,
+          card.backProcessedSrc,
+        ].filter((url): url is string => url !== undefined)),
+        nextCards,
+      )
+      setExportError(undefined)
+    } catch (error) {
+      generatedUrls.forEach(URL.revokeObjectURL)
+      setExportError(
+        error instanceof Error
+          ? `Could not update the preset: ${error.message}`
+          : 'Could not update the preset.',
+      )
+    } finally {
+      if (generation === presetGeneration.current) {
+        presetInProgress.current = false
+        setIsChangingPreset(false)
+      }
+    }
   }
 
-  function handlePresetChange(nextPreset: PresetName) {
-    if (nextPreset === presetName) return
-    setPresetName(nextPreset)
-    invalidateDeckCrops()
-  }
+  function handleBleedModeChange(cardId: string, nextBleedMode: BleedMode) {
+    const sourceCard = cardsRef.current.find((card) => card.id === cardId)
+    if (!sourceCard || sourceCard.bleedMode === nextBleedMode) return
 
-  function handleBleedModeChange(nextBleedMode: BleedMode) {
-    if (nextBleedMode === bleedMode) return
-    setBleedMode(nextBleedMode)
-    invalidateDeckCrops()
+    const operationToken = beginCardOperation(cardId)
+    const presetForOperation = appliedPreset.current
+    const operationCardSize = CARD_PRESETS[presetForOperation]
+    const generatedUrls: string[] = []
+
+    void (async () => {
+      try {
+        const processedSides = await Promise.all(
+          SIDES.map(async (side) => {
+            const result = await prepareSideCrop(
+              sourceCard,
+              side,
+              operationCardSize,
+              nextBleedMode,
+              true,
+            )
+            const processedSource = result
+              ? URL.createObjectURL(result.blob)
+              : undefined
+            if (processedSource) generatedUrls.push(processedSource)
+            return { side, crop: result?.crop, processedSource }
+          }),
+        )
+
+        const latestCard = cardsRef.current.find((card) => card.id === cardId)
+        if (
+          isCurrentCardOperation(cardId, operationToken) &&
+          appliedPreset.current !== presetForOperation
+        ) {
+          generatedUrls.forEach(URL.revokeObjectURL)
+          setExportError('The card preset changed during mode conversion. Please try again.')
+          return
+        }
+        if (
+          !isCurrentCardOperation(cardId, operationToken) ||
+          !latestCard ||
+          latestCard.bleedMode !== sourceCard.bleedMode ||
+          SIDES.some(
+            (side) => sideSource(latestCard, side) !== sideSource(sourceCard, side),
+          )
+        ) {
+          generatedUrls.forEach(URL.revokeObjectURL)
+          return
+        }
+
+        const nextCard = processedSides.reduce(
+          (updated, sideResult) =>
+            withSideCrop(
+              updated,
+              sideResult.side,
+              sideResult.crop,
+              sideResult.processedSource,
+            ),
+          { ...latestCard, bleedMode: nextBleedMode },
+        )
+        const nextCards = cardsRef.current.map((card) =>
+          card.id === cardId ? nextCard : card,
+        )
+        replaceCards(nextCards)
+        revokeUnusedUrls(
+          SIDES.map((side) => sideProcessedSource(latestCard, side)).filter(
+            (url): url is string => url !== undefined,
+          ),
+          nextCards,
+        )
+        setExportError(undefined)
+      } catch (error) {
+        generatedUrls.forEach(URL.revokeObjectURL)
+        if (isCurrentCardOperation(cardId, operationToken)) {
+          setExportError(
+            error instanceof Error
+              ? `Could not change bleed mode: ${error.message}`
+              : 'Could not change bleed mode.',
+          )
+        }
+      }
+    })()
   }
 
   async function handleDownload() {
@@ -292,7 +527,6 @@ function App() {
             paper={paper}
             grid={grid}
             cardSize={cardSize}
-            bleedMode={bleedMode}
           />
         ) : (
           <DuplexDoc
@@ -300,7 +534,6 @@ function App() {
             paper={paper}
             grid={grid}
             cardSize={cardSize}
-            bleedMode={bleedMode}
             calibration={ZERO_CALIBRATION}
           />
         )
@@ -331,12 +564,13 @@ function App() {
         </header>
 
         <section className="mb-6 rounded-box border border-base-300 bg-base-100 p-5">
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             <label className="form-control">
               <span className="label-text mb-1">Card preset</span>
               <select
                 className="select select-bordered w-full"
                 value={presetName}
+                disabled={isChangingPreset}
                 onChange={(event) => {
                   const value = event.currentTarget.value
                   if (isPresetName(value)) handlePresetChange(value)
@@ -381,27 +615,6 @@ function App() {
                 <option value="DUPLEX">Double-sided hand-cut</option>
               </select>
             </label>
-            <fieldset>
-              <legend className="mb-1 text-sm font-medium">Bleed mode</legend>
-              <div className="join w-full">
-                <button
-                  className={`btn join-item flex-1 ${bleedMode === 'IMAGE' ? 'btn-primary' : 'btn-outline'}`}
-                  type="button"
-                  aria-pressed={bleedMode === 'IMAGE'}
-                  onClick={() => handleBleedModeChange('IMAGE')}
-                >
-                  Extend image
-                </button>
-                <button
-                  className={`btn join-item flex-1 ${bleedMode === 'COLOR' ? 'btn-primary' : 'btn-outline'}`}
-                  type="button"
-                  aria-pressed={bleedMode === 'COLOR'}
-                  onClick={() => handleBleedModeChange('COLOR')}
-                >
-                  Solid color
-                </button>
-              </div>
-            </fieldset>
           </div>
         </section>
 
@@ -434,7 +647,7 @@ function App() {
                         card={card}
                         side={side}
                         cardSize={cardSize}
-                        showBleedRing={bleedMode === 'COLOR'}
+                        showBleedRing={card.bleedMode === 'COLOR'}
                         source={side === 'front' ? card.frontProcessedSrc : card.backProcessedSrc}
                         placeholder={side === 'front' ? 'No front' : 'No back'}
                         alt={`Card ${index + 1} ${side} thumbnail`}
@@ -508,9 +721,9 @@ function App() {
               key={selectedCard.id}
               card={selectedCard}
               cardSize={cardSize}
-              bleedMode={bleedMode}
               errors={errors}
               onCardChange={updateCard}
+              onBleedModeChange={handleBleedModeChange}
               onImageSelect={handleImageSelect}
               onCropChange={handleCropChange}
               onProcessedImage={handleProcessedImage}
@@ -545,7 +758,7 @@ function App() {
                             card={card}
                             side={side}
                             cardSize={cardSize}
-                            showBleedRing={bleedMode === 'COLOR'}
+                            showBleedRing={card.bleedMode === 'COLOR'}
                             source={source}
                             placeholder={side === 'front' ? 'Crop required' : 'No back'}
                             alt={`Card ${index + 1} ${side} print preview`}
