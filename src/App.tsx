@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { pdf } from '@react-pdf/renderer'
 import CardEditor from './components/CardEditor.tsx'
+import CardFace from './components/CardFace.tsx'
 import DuplexDoc from './pdf/DuplexDoc.tsx'
 import SingleSidedDoc from './pdf/SingleSidedDoc.tsx'
 import { addCard, deleteCard, duplicateCard, totalCopies } from './lib/deck.ts'
@@ -29,11 +30,12 @@ function isPresetName(value: string): value is PresetName {
   return Object.prototype.hasOwnProperty.call(CARD_PRESETS, value)
 }
 
-function createCard(id: string, backgroundColor = '#ffffff'): Card {
+function createCard(id: string, previous?: Card): Card {
   return {
     id,
-    backgroundColor,
-    bleedColor: '#ffffff',
+    frontBackgroundColor: previous?.frontBackgroundColor,
+    backBackgroundColor: previous?.backBackgroundColor,
+    bleedColor: previous?.bleedColor ?? '#ffffff',
     quantity: 1,
   }
 }
@@ -134,8 +136,7 @@ function App() {
   }
 
   function handleAddCard() {
-    const previousCard = cardsRef.current.at(-1)
-    const card = createCard(crypto.randomUUID(), previousCard?.backgroundColor)
+    const card = createCard(crypto.randomUUID(), cardsRef.current.at(-1))
     replaceCards(addCard(cardsRef.current, card))
     setSelectedId(card.id)
     setErrors({ front: undefined, back: undefined })
@@ -426,35 +427,19 @@ function App() {
                     setErrors({ front: undefined, back: undefined })
                   }}
                 >
-                  <span className="grid h-20 w-28 shrink-0 grid-cols-2 gap-1">
-                    {(['front', 'back'] as const).map((side) => {
-                      const source =
-                        side === 'front' ? card.frontProcessedSrc : card.backProcessedSrc
-                      return (
-                        <span
-                          key={side}
-                          className="flex min-w-0 items-center justify-center overflow-hidden rounded"
-                          style={{
-                            backgroundColor:
-                              bleedMode === 'COLOR' ? card.bleedColor : card.backgroundColor,
-                            padding: bleedMode === 'COLOR' ? 3 : 0,
-                          }}
-                        >
-                          {source ? (
-                            <img
-                              className="h-full w-full object-cover"
-                              src={source}
-                              alt={`Card ${index + 1} ${side} thumbnail`}
-                              style={{ backgroundColor: card.backgroundColor }}
-                            />
-                          ) : (
-                            <span className="px-1 text-center text-[10px] text-base-content/60">
-                              No {side}
-                            </span>
-                          )}
-                        </span>
-                      )
-                    })}
+                  <span className="grid w-28 shrink-0 grid-cols-2 gap-1">
+                    {SIDES.map((side) => (
+                      <CardFace
+                        key={side}
+                        card={card}
+                        side={side}
+                        cardSize={cardSize}
+                        showBleedRing={bleedMode === 'COLOR'}
+                        source={side === 'front' ? card.frontProcessedSrc : card.backProcessedSrc}
+                        placeholder={side === 'front' ? 'No front' : 'No back'}
+                        alt={`Card ${index + 1} ${side} thumbnail`}
+                      />
+                    ))}
                   </span>
                   <span className="min-w-0">
                     <span className="block font-medium">Card {index + 1}</span>
@@ -546,7 +531,9 @@ function App() {
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {cards.map((card, index) => (
                 <article key={card.id} className="rounded-box border border-base-300 p-3">
-                  <h3 className="mb-2 font-medium">Card {index + 1} · {card.quantity} copies</h3>
+                  <h3 className="mb-2 font-medium">
+                    Card {index + 1} · {card.quantity} {card.quantity === 1 ? 'copy' : 'copies'}
+                  </h3>
                   <div className="grid grid-cols-2 gap-2">
                     {SIDES.map((side) => {
                       const source =
@@ -554,29 +541,15 @@ function App() {
                       return (
                         <div key={side}>
                           <p className="mb-1 text-xs capitalize text-base-content/60">{side}</p>
-                          <div
-                            className="flex h-36 items-center justify-center overflow-hidden rounded-box p-2"
-                            style={{
-                              backgroundColor:
-                                bleedMode === 'COLOR' ? card.bleedColor : card.backgroundColor,
-                            }}
-                          >
-                            {source ? (
-                              <img
-                                className="max-h-full max-w-full object-contain"
-                                src={source}
-                                alt={`Card ${index + 1} ${side} print preview`}
-                                style={{
-                                  backgroundColor: card.backgroundColor,
-                                  border: bleedMode === 'COLOR' ? `3px solid ${card.bleedColor}` : undefined,
-                                }}
-                              />
-                            ) : (
-                              <span className="text-center text-xs text-base-content/50">
-                                {side === 'front' ? 'Crop required' : 'Blank back'}
-                              </span>
-                            )}
-                          </div>
+                          <CardFace
+                            card={card}
+                            side={side}
+                            cardSize={cardSize}
+                            showBleedRing={bleedMode === 'COLOR'}
+                            source={source}
+                            placeholder={side === 'front' ? 'Crop required' : 'No back'}
+                            alt={`Card ${index + 1} ${side} print preview`}
+                          />
                         </div>
                       )
                     })}

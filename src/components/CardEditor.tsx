@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState, type CSSProperties, type SyntheticEvent } from 'react'
 import ReactCrop, { type PixelCrop } from 'react-image-crop'
+import CardFace from './CardFace.tsx'
 import type { Size } from '../lib/geometry.ts'
 import { DEFAULT_BLEED } from '../lib/geometry.ts'
 import { cropAreaSize, effectiveDpi, isLowRes } from '../lib/crop.ts'
+import { backgroundFor } from '../lib/piece.ts'
 import type { BleedMode, Card, CardSide, PixelCropRect } from '../types.ts'
 
 type CardEditorProps = {
@@ -18,25 +20,31 @@ type CardEditorProps = {
 }
 
 type SideCropProps = {
+  card: Card
   side: CardSide
   source: string
   crop?: PixelCropRect
+  cardSize: Size
   areaWidth: number
   areaHeight: number
   bleedMode: BleedMode
   bleed: number
-  backgroundColor: string
+  backgroundColor?: string
   error?: string
   onImageSelect: (side: CardSide, file: File) => void
   onCropChange: (side: CardSide, crop: PixelCropRect) => void
   onProcessedImage: (side: CardSide, blob: Blob) => void
   onError: (side: CardSide, message: string | undefined) => void
+  onBackgroundToggle: (side: CardSide, enabled: boolean) => void
+  onBackgroundChange: (side: CardSide, color: string) => void
 }
 
 function SideCrop({
+  card,
   side,
   source,
   crop,
+  cardSize,
   areaWidth,
   areaHeight,
   bleedMode,
@@ -47,6 +55,8 @@ function SideCrop({
   onCropChange,
   onProcessedImage,
   onError,
+  onBackgroundToggle,
+  onBackgroundChange,
 }: SideCropProps) {
   const imageRef = useRef<HTMLImageElement>(null)
   const renderId = useRef(0)
@@ -182,6 +192,29 @@ function SideCrop({
         )}
       </div>
 
+      <div className="mb-3 flex flex-wrap items-center gap-4">
+        <label className="label cursor-pointer justify-start gap-2">
+          <input
+            className="checkbox checkbox-sm"
+            type="checkbox"
+            checked={backgroundColor !== undefined}
+            onChange={(event) => onBackgroundToggle(side, event.currentTarget.checked)}
+          />
+          <span className="label-text">Background</span>
+        </label>
+        {backgroundColor !== undefined && (
+          <label className="form-control w-fit">
+            <span className="label-text mb-1">Background color</span>
+            <input
+              className="input input-bordered h-12 w-20 p-1"
+              type="color"
+              value={backgroundColor}
+              onChange={(event) => onBackgroundChange(side, event.currentTarget.value)}
+            />
+          </label>
+        )}
+      </div>
+
       <label className="form-control mb-3 w-full">
         <span className="label-text mb-1">Upload {side} image</span>
         <input
@@ -196,50 +229,56 @@ function SideCrop({
         />
       </label>
 
-      {source ? (
-        <>
-          <div
-            className="flex min-h-56 max-w-full items-center justify-center overflow-hidden rounded-box p-3"
-            style={{ backgroundColor }}
+      <CardFace
+        card={card}
+        side={side}
+        cardSize={cardSize}
+        showBleedRing={bleedMode === 'COLOR'}
+        aspectIncludesBleed
+        source={source}
+        placeholder={side === 'front' ? 'Crop required' : 'No back'}
+        className="mx-auto max-w-[300px]"
+      >
+        {source ? (
+          <ReactCrop
+            crop={displayCrop}
+            aspect={aspect}
+            keepSelection
+            className="h-full w-full"
+            style={{ height: '100%', width: '100%' }}
+            onChange={handleCropChange}
+            onComplete={handleCropComplete}
+            renderSelectionAddon={
+              bleedMode === 'IMAGE'
+                ? () => <div className="trim-line" style={trimLineStyle} />
+                : undefined
+            }
           >
-            <ReactCrop
-              crop={displayCrop}
-              aspect={aspect}
-              keepSelection
-              style={{ backgroundColor }}
-              onChange={handleCropChange}
-              onComplete={handleCropComplete}
-              renderSelectionAddon={
-                bleedMode === 'IMAGE'
-                  ? () => <div className="trim-line" style={trimLineStyle} />
-                  : undefined
-              }
-            >
-              <img
-                ref={imageRef}
-                src={source}
-                alt={`${side} crop`}
-                onLoad={handleImageLoad}
-                onError={() => onError(side, 'This image could not be loaded. Try another file.')}
-                style={{ display: 'block', maxWidth: '100%', maxHeight: 420 }}
-              />
-            </ReactCrop>
-          </div>
-          {dpi !== undefined && isLowRes(dpi) && (
-            <p className="mt-2 text-sm text-warning">
-              This crop is below 200 DPI and may print blurry.
-            </p>
-          )}
-          {error && (
-            <p role="alert" className="mt-2 text-sm text-error">
-              {error}
-            </p>
-          )}
-        </>
-      ) : (
-        <div className="flex min-h-56 items-center justify-center rounded-box bg-base-200 p-4 text-center text-sm text-base-content/60">
-          Upload an image to crop the {side}.
-        </div>
+            <img
+              ref={imageRef}
+              src={source}
+              alt={`${side} crop`}
+              onLoad={handleImageLoad}
+              onError={() => onError(side, 'This image could not be loaded. Try another file.')}
+              style={{
+                display: 'block',
+                width: '100%',
+                height: '100%',
+                objectFit: 'fill',
+              }}
+            />
+          </ReactCrop>
+        ) : undefined}
+      </CardFace>
+      {source && dpi !== undefined && isLowRes(dpi) && (
+        <p className="mt-2 text-sm text-warning">
+          This crop is below 200 DPI and may print blurry.
+        </p>
+      )}
+      {source && error && (
+        <p role="alert" className="mt-2 text-sm text-error">
+          {error}
+        </p>
       )}
     </section>
   )
@@ -282,32 +321,19 @@ export default function CardEditor({
             />
           </label>
         </div>
-        <div className="mt-4 flex flex-wrap gap-4">
-          <label className="form-control w-fit">
-            <span className="label-text mb-1">Card background</span>
+        {bleedMode === 'COLOR' && (
+          <label className="form-control mt-4 w-fit">
+            <span className="label-text mb-1">Bleed color</span>
             <input
               className="input input-bordered h-12 w-20 p-1"
               type="color"
-              value={card.backgroundColor}
+              value={card.bleedColor}
               onChange={(event) =>
-                onCardChange({ ...card, backgroundColor: event.currentTarget.value })
+                onCardChange({ ...card, bleedColor: event.currentTarget.value })
               }
             />
           </label>
-          {bleedMode === 'COLOR' && (
-            <label className="form-control w-fit">
-              <span className="label-text mb-1">Bleed color</span>
-              <input
-                className="input input-bordered h-12 w-20 p-1"
-                type="color"
-                value={card.bleedColor}
-                onChange={(event) =>
-                  onCardChange({ ...card, bleedColor: event.currentTarget.value })
-                }
-              />
-            </label>
-          )}
-        </div>
+        )}
         <p className="mt-3 text-sm text-base-content/60">
           {DEFAULT_BLEED} pt bleed · Crop area {area.width} × {area.height} pt
         </p>
@@ -317,23 +343,45 @@ export default function CardEditor({
         {(['front', 'back'] as const).map((side) => {
           const source = side === 'front' ? card.frontSrc : card.backSrc
           const crop = side === 'front' ? card.frontCrop : card.backCrop
+          const backgroundKey =
+            side === 'front' ? 'frontBackgroundColor' : 'backBackgroundColor'
+          const sideBackground = card[backgroundKey]
 
           return (
             <SideCrop
               key={`${side}-${source ?? 'empty'}-${area.width}-${area.height}`}
+              card={card}
               side={side}
               source={source ?? ''}
               crop={crop}
+              cardSize={cardSize}
               areaWidth={area.width}
               areaHeight={area.height}
               bleedMode={bleedMode}
               bleed={DEFAULT_BLEED}
-              backgroundColor={card.backgroundColor}
+              backgroundColor={sideBackground}
               error={errors[side]}
               onImageSelect={onImageSelect}
               onCropChange={onCropChange}
               onProcessedImage={onProcessedImage}
               onError={onError}
+              onBackgroundToggle={(selectedSide, enabled) => {
+                const key =
+                  selectedSide === 'front'
+                    ? 'frontBackgroundColor'
+                    : 'backBackgroundColor'
+                onCardChange({
+                  ...card,
+                  [key]: enabled ? backgroundFor(card, selectedSide) : undefined,
+                })
+              }}
+              onBackgroundChange={(selectedSide, color) => {
+                const key =
+                  selectedSide === 'front'
+                    ? 'frontBackgroundColor'
+                    : 'backBackgroundColor'
+                onCardChange({ ...card, [key]: color })
+              }}
             />
           )
         })}

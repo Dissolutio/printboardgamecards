@@ -21,9 +21,11 @@ export default function CardPiece({
   side,
 }: CardPieceProps) {
   const source = side === 'front' ? card.frontProcessedSrc : card.backProcessedSrc
-  if (!source) return null
+  const hasExplicitBackground =
+    side === 'front' ? card.frontBackgroundColor !== undefined : card.backBackgroundColor !== undefined
+  if (!source && !hasExplicitBackground) return null
 
-  const fills = pieceFills({ ...card, bleedMode })
+  const fills = pieceFills({ ...card, bleedMode }, side)
   const imageInset = bleedMode === 'COLOR' ? DEFAULT_BLEED : 0
   const imageWidth = bleedMode === 'COLOR' ? cardSize.width : placement.width
   const imageHeight = bleedMode === 'COLOR' ? cardSize.height : placement.height
@@ -49,16 +51,18 @@ export default function CardPiece({
           />
         )
       })}
-      <Image
-        src={source}
-        style={{
-          position: 'absolute',
-          left: placement.x + imageInset,
-          top: placement.y + imageInset,
-          width: imageWidth,
-          height: imageHeight,
-        }}
-      />
+      {source && (
+        <Image
+          src={source}
+          style={{
+            position: 'absolute',
+            left: placement.x + imageInset,
+            top: placement.y + imageInset,
+            width: imageWidth,
+            height: imageHeight,
+          }}
+        />
+      )}
     </>
   )
 }

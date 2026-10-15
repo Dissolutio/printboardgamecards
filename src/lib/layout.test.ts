@@ -21,7 +21,7 @@ function makeCard(
     backProcessedSrc: backSrc,
     frontCrop: frontSrc ? { x: 0, y: 0, width: 750, height: 1050 } : undefined,
     backCrop: backSrc ? { x: 0, y: 0, width: 750, height: 1050 } : undefined,
-    backgroundColor: '#f5efe6',
+    frontBackgroundColor: '#f5efe6',
     bleedColor: '#ffffff',
     quantity,
   }

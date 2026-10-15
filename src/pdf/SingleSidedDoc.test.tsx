@@ -26,7 +26,8 @@ function makeCards(count: number): Card[] {
     backProcessedSrc: distinctBacks[index],
     frontCrop: { x: 0, y: 0, width: 750, height: 1050 },
     backCrop: { x: 0, y: 0, width: 750, height: 1050 },
-    backgroundColor: '#ff0000',
+    frontBackgroundColor: '#ff0000',
+    backBackgroundColor: '#0000ff',
     bleedColor: '#ffffff',
     quantity: 1,
   }))
@@ -111,7 +112,50 @@ describe('DuplexDoc PDF rendering', () => {
       expect(pdfText).toContain('/Subtype /Image')
       expect(pdfText.match(/\/Subtype \/Image/g)?.length).toBeGreaterThanOrEqual(6)
       expect(pageContent.match(/\/I\d+ Do/g)).toHaveLength(10)
+      expect(pageContent).toContain('1 0 0 scn')
+      expect(pageContent).toContain('0 0 1 scn')
       expect(pageContent).toMatch(/\bre\nf\b/)
     })
   }
+
+  it('paints a back with only a background, but leaves an unset back empty', async () => {
+    const card: Card = {
+      id: 'background-only-back',
+      frontProcessedSrc: pixel,
+      frontCrop: { x: 0, y: 0, width: 750, height: 1050 },
+      frontBackgroundColor: '#ff0000',
+      backBackgroundColor: '#0000ff',
+      bleedColor: '#ffffff',
+      quantity: 1,
+    }
+    const cardSize = CARD_PRESETS.POKER
+    const grid = calculateGrid({ paper: PAPER.LETTER, card: cardSize })
+    const withBackground = await renderToBuffer(
+      <DuplexDoc
+        cards={[card]}
+        paper={PAPER.LETTER}
+        grid={grid}
+        cardSize={cardSize}
+        bleedMode="IMAGE"
+        calibration={{ offsetX: 0, offsetY: 0 }}
+      />,
+    )
+    const coloredContent = (await inflatePdfStreams(withBackground)).join('\n')
+    expect(coloredContent.match(/0 0 1 scn/g)).toHaveLength(1)
+    expect(coloredContent.match(/1 0 0 scn/g)).toHaveLength(1)
+
+    const cardWithoutBackBackground: Card = { ...card, backBackgroundColor: undefined }
+    const withoutBackground = await renderToBuffer(
+      <DuplexDoc
+        cards={[cardWithoutBackBackground]}
+        paper={PAPER.LETTER}
+        grid={grid}
+        cardSize={cardSize}
+        bleedMode="IMAGE"
+        calibration={{ offsetX: 0, offsetY: 0 }}
+      />,
+    )
+    const emptyBackContent = (await inflatePdfStreams(withoutBackground)).join('\n')
+    expect(emptyBackContent.match(/0 0 1 scn/g) ?? []).toHaveLength(0)
+  })
 })
