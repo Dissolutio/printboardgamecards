@@ -1,2 +1,10 @@
 @import "tailwindcss";
 @plugin "daisyui";
+
+.trim-line {
+  position: absolute;
+  box-sizing: border-box;
+  border: 2px dashed rgb(255 255 255 / 90%);
+  box-shadow: 0 0 2px rgb(0 0 0 / 80%);
+  pointer-events: none;
+}

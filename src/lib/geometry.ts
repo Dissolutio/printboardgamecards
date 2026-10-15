@@ -20,10 +20,12 @@ export const CARD_PRESETS = {
   TAROT: { width: 198, height: 342 },
 } as const
 
+export const DEFAULT_BLEED = 9
+
 export function calculateGrid({
   paper,
   card,
-  bleed = 9,
+  bleed = DEFAULT_BLEED,
   margin = 18,
 }: {
   paper: Size
