@@ -13,6 +13,7 @@
   "dependencies": {
     "@react-pdf/renderer": "^4.9.0",
     "@tailwindcss/vite": "^4.3.3",
+    "buffer": "^6.0.3",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-image-crop": "^11.1.2",

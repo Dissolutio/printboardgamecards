@@ -1,11 +1,21 @@
 import { useEffect, useRef, useState } from 'react'
+import { pdf } from '@react-pdf/renderer'
 import CardEditor from './components/CardEditor.tsx'
-import { CARD_PRESETS, PAPER } from './lib/geometry.ts'
+import SingleSidedDoc from './pdf/SingleSidedDoc.tsx'
+import {
+  calculateGrid,
+  CARD_PRESETS,
+  DEFAULT_BLEED,
+  PAPER,
+} from './lib/geometry.ts'
+import { layoutPages } from './lib/layout.ts'
 import type { Card, CardSide, PixelCropRect } from './types.ts'
 
 const SIDES: CardSide[] = ['front', 'back']
+const PAPER_OPTIONS: (keyof typeof PAPER)[] = ['LETTER', 'A4']
 
 type SideState<T> = Record<CardSide, T>
+type PaperName = keyof typeof PAPER
 
 function createInitialCard(): Card {
   return {
@@ -17,8 +27,32 @@ function createInitialCard(): Card {
   }
 }
 
+async function blobUrlToDataUrl(url: string): Promise<string> {
+  const response = await fetch(url)
+  if (!response.ok) throw new Error('Could not read the cropped image for PDF export.')
+
+  const blob = await response.blob()
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        resolve(reader.result)
+      } else {
+        reject(new Error('Could not convert the cropped image for PDF export.'))
+      }
+    }
+    reader.onerror = () => {
+      reject(reader.error ?? new Error('Could not convert the cropped image for PDF export.'))
+    }
+    reader.readAsDataURL(blob)
+  })
+}
+
 function App() {
   const [card, setCard] = useState<Card>(createInitialCard)
+  const [paperName, setPaperName] = useState<PaperName>('LETTER')
+  const [isExporting, setIsExporting] = useState(false)
+  const [exportError, setExportError] = useState<string>()
   const [processedSources, setProcessedSources] = useState<SideState<string | undefined>>({
     front: undefined,
     back: undefined,
@@ -35,6 +69,16 @@ function App() {
     front: undefined,
     back: undefined,
   })
+  const paper = PAPER[paperName]
+  const grid = calculateGrid({
+    paper,
+    card: { width: card.width, height: card.height },
+    bleed: DEFAULT_BLEED,
+  })
+  const exportCards = processedSources.front
+    ? [{ ...card, frontSrc: processedSources.front }]
+    : []
+  const pageCount = layoutPages(exportCards, grid).length
 
   useEffect(
     () => () => {
@@ -100,6 +144,45 @@ function App() {
     setErrors((current) => ({ ...current, [side]: message }))
   }
 
+  async function handleDownload() {
+    if (!processedSources.front) {
+      setExportError('Upload and crop a front image before exporting.')
+      return
+    }
+
+    setIsExporting(true)
+    setExportError(undefined)
+
+    try {
+      const frontDataUrl = await blobUrlToDataUrl(processedSources.front)
+      const pdfBlob = await pdf(
+        <SingleSidedDoc
+          cards={[{ ...card, frontSrc: frontDataUrl }]}
+          paper={paper}
+          grid={grid}
+        />,
+      ).toBlob()
+      const downloadUrl = URL.createObjectURL(pdfBlob)
+
+      try {
+        const link = document.createElement('a')
+        link.href = downloadUrl
+        link.download = `printboard-cards-${paperName.toLowerCase()}.pdf`
+        document.body.appendChild(link)
+        link.click()
+        link.remove()
+      } finally {
+        window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000)
+      }
+    } catch (error) {
+      setExportError(
+        error instanceof Error ? error.message : 'PDF export failed. Please try again.',
+      )
+    } finally {
+      setIsExporting(false)
+    }
+  }
+
   return (
     <main className="min-h-screen bg-base-200 px-4 py-8 text-base-content sm:px-6 lg:px-8">
       <div className="mx-auto max-w-7xl">
@@ -111,9 +194,53 @@ function App() {
             <h1 className="mt-1 text-3xl font-bold">Card editor</h1>
           </div>
           <p className="text-sm text-base-content/60">
-            Letter paper · {PAPER.LETTER.width} × {PAPER.LETTER.height} pt
+            {paperName === 'LETTER' ? 'Letter' : 'A4'} paper · {paper.width} × {paper.height} pt
           </p>
         </header>
+
+        <section className="mb-6 flex flex-wrap items-end justify-between gap-4 rounded-box border border-base-300 bg-base-100 p-5">
+          <label className="form-control w-40">
+            <span className="label-text mb-1">Paper size</span>
+            <select
+              className="select select-bordered w-full"
+              value={paperName}
+              onChange={(event) => {
+                const selectedPaper = PAPER_OPTIONS.find(
+                  (option) => option === event.currentTarget.value,
+                )
+                if (selectedPaper) setPaperName(selectedPaper)
+              }}
+            >
+              {PAPER_OPTIONS.map((option) => (
+                <option key={option} value={option}>
+                  {option === 'LETTER' ? 'Letter' : 'A4'}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="flex flex-wrap items-center gap-4">
+            <p className="text-sm text-base-content/60">
+              {pageCount} page{pageCount === 1 ? '' : 's'} · {card.quantity} front
+              {card.quantity === 1 ? '' : 's'}
+            </p>
+            <button
+              className="btn btn-primary"
+              type="button"
+              disabled={!processedSources.front || isExporting}
+              onClick={handleDownload}
+            >
+              {isExporting ? 'Preparing PDF…' : 'Download PDF'}
+            </button>
+            <p className="max-w-md text-sm font-medium text-warning">
+              Print at Actual Size / 100% scale. Do not use Fit to Page.
+            </p>
+          </div>
+          {exportError && (
+            <p role="alert" className="w-full text-sm text-error">
+              {exportError}
+            </p>
+          )}
+        </section>
 
         <CardEditor
           card={card}
