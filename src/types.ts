@@ -9,13 +9,12 @@ export type PixelCropRect = {
 
 export type Card = {
   id: string
-  width: number
-  height: number
   frontSrc?: string
   backSrc?: string
+  frontProcessedSrc?: string
+  backProcessedSrc?: string
   frontCrop?: PixelCropRect
   backCrop?: PixelCropRect
-  bleedMode: BleedMode
   bleedColor: string
   quantity: number
 }

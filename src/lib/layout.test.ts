@@ -17,12 +17,10 @@ function makeCard(
 ): Card {
   return {
     id,
-    ...CARD_PRESETS.POKER,
-    frontSrc,
-    backSrc,
+    frontProcessedSrc: frontSrc,
+    backProcessedSrc: backSrc,
     frontCrop: frontSrc ? { x: 0, y: 0, width: 750, height: 1050 } : undefined,
     backCrop: backSrc ? { x: 0, y: 0, width: 750, height: 1050 } : undefined,
-    bleedMode: 'IMAGE',
     bleedColor: '#ffffff',
     quantity,
   }

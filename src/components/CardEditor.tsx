@@ -1,14 +1,16 @@
 import { useEffect, useRef, useState, type CSSProperties, type SyntheticEvent } from 'react'
 import ReactCrop, { type PixelCrop } from 'react-image-crop'
-import { CARD_PRESETS, DEFAULT_BLEED } from '../lib/geometry.ts'
+import type { Size } from '../lib/geometry.ts'
+import { DEFAULT_BLEED } from '../lib/geometry.ts'
 import { cropAreaSize, effectiveDpi, isLowRes } from '../lib/crop.ts'
-import type { Card, CardSide, PixelCropRect } from '../types.ts'
+import type { BleedMode, Card, CardSide, PixelCropRect } from '../types.ts'
 
 type CardEditorProps = {
   card: Card
-  processedSources: Record<CardSide, string | undefined>
+  cardSize: Size
+  bleedMode: BleedMode
   errors: Record<CardSide, string | undefined>
-  onCardChange: (card: Card, resetCrops?: boolean) => void
+  onCardChange: (card: Card) => void
   onImageSelect: (side: CardSide, file: File) => void
   onCropChange: (side: CardSide, crop: PixelCropRect) => void
   onProcessedImage: (side: CardSide, blob: Blob) => void
@@ -21,7 +23,7 @@ type SideCropProps = {
   crop?: PixelCropRect
   areaWidth: number
   areaHeight: number
-  bleedMode: Card['bleedMode']
+  bleedMode: BleedMode
   bleed: number
   error?: string
   onImageSelect: (side: CardSide, file: File) => void
@@ -239,7 +241,8 @@ function SideCrop({
 
 export default function CardEditor({
   card,
-  processedSources,
+  cardSize,
+  bleedMode,
   errors,
   onCardChange,
   onImageSelect,
@@ -247,180 +250,74 @@ export default function CardEditor({
   onProcessedImage,
   onError,
 }: CardEditorProps) {
-  const area = cropAreaSize(card, DEFAULT_BLEED, card.bleedMode)
-  const selectedPreset =
-    Object.entries(CARD_PRESETS).find(
-      ([, preset]) => preset.width === card.width && preset.height === card.height,
-    )?.[0] ?? 'POKER'
-
-  function selectPreset(value: string) {
-    const selectedPreset = Object.entries(CARD_PRESETS).find(([name]) => name === value)
-    if (!selectedPreset) return
-
-    const [, preset] = selectedPreset
-    onCardChange(
-      {
-        ...card,
-        width: preset.width,
-        height: preset.height,
-        frontCrop: undefined,
-        backCrop: undefined,
-      },
-      true,
-    )
-  }
-
-  function selectBleedMode(bleedMode: Card['bleedMode']) {
-    if (bleedMode === card.bleedMode) return
-
-    onCardChange(
-      {
-        ...card,
-        bleedMode,
-        frontCrop: undefined,
-        backCrop: undefined,
-      },
-      true,
-    )
-  }
+  const area = cropAreaSize(cardSize, DEFAULT_BLEED, bleedMode)
 
   return (
-    <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_20rem]">
-      <div className="space-y-6">
-        <section className="rounded-box border border-base-300 bg-base-100 p-5">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <label className="form-control">
-              <span className="label-text mb-1">Card preset</span>
-              <select
-                className="select select-bordered w-full"
-                value={selectedPreset}
-                onChange={(event) => selectPreset(event.currentTarget.value)}
-              >
-                {Object.entries(CARD_PRESETS).map(([name]) => (
-                  <option key={name} value={name}>
-                    {name.charAt(0) + name.slice(1).toLowerCase()}
-                  </option>
-                ))}
-              </select>
-              <span className="label-text-alt mt-1">
-                {card.width} × {card.height} pt trim
-              </span>
-            </label>
-
-            <label className="form-control">
-              <span className="label-text mb-1">Quantity</span>
-              <input
-                className="input input-bordered w-full"
-                type="number"
-                min={1}
-                step={1}
-                value={card.quantity}
-                onChange={(event) => {
-                  const quantity = Number(event.currentTarget.value)
-                  if (Number.isInteger(quantity) && quantity >= 1) {
-                    onCardChange({ ...card, quantity })
-                  }
-                }}
-              />
-            </label>
-          </div>
-
-          <div className="mt-5 flex flex-wrap items-end gap-4">
-            <fieldset>
-              <legend className="mb-2 text-sm font-medium">Bleed mode</legend>
-              <div className="join">
-                <button
-                  className={`btn join-item ${card.bleedMode === 'IMAGE' ? 'btn-primary' : 'btn-outline'}`}
-                  type="button"
-                  aria-pressed={card.bleedMode === 'IMAGE'}
-                  onClick={() => selectBleedMode('IMAGE')}
-                >
-                  Extend image
-                </button>
-                <button
-                  className={`btn join-item ${card.bleedMode === 'COLOR' ? 'btn-primary' : 'btn-outline'}`}
-                  type="button"
-                  aria-pressed={card.bleedMode === 'COLOR'}
-                  onClick={() => selectBleedMode('COLOR')}
-                >
-                  Solid color
-                </button>
-              </div>
-            </fieldset>
-
-            {card.bleedMode === 'COLOR' && (
-              <label className="form-control">
-                <span className="label-text mb-1">Bleed color</span>
-                <input
-                  className="input input-bordered h-12 w-20 p-1"
-                  type="color"
-                  value={card.bleedColor}
-                  onChange={(event) =>
-                    onCardChange({ ...card, bleedColor: event.currentTarget.value })
-                  }
-                />
-              </label>
-            )}
-          </div>
-          <p className="mt-3 text-sm text-base-content/60">
-            {DEFAULT_BLEED} pt bleed · Crop area {area.width} × {area.height} pt
+    <div className="space-y-6">
+      <section className="rounded-box border border-base-300 bg-base-100 p-5">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <p className="self-center text-sm text-base-content/60">
+            Card size: {cardSize.width} × {cardSize.height} pt trim
           </p>
-        </section>
-
-        <div className="grid gap-6 lg:grid-cols-2">
-          {(['front', 'back'] as const).map((side) => {
-            const source = side === 'front' ? card.frontSrc : card.backSrc
-            const crop = side === 'front' ? card.frontCrop : card.backCrop
-            const error = errors[side]
-
-            return (
-              <SideCrop
-                key={`${side}-${source ?? 'empty'}-${area.width}-${area.height}`}
-                side={side}
-                source={source ?? ''}
-                crop={crop}
-                areaWidth={area.width}
-                areaHeight={area.height}
-                bleedMode={card.bleedMode}
-                bleed={DEFAULT_BLEED}
-                error={error}
-                onImageSelect={onImageSelect}
-                onCropChange={onCropChange}
-                onProcessedImage={onProcessedImage}
-                onError={onError}
-              />
-            )
-          })}
+          <label className="form-control">
+            <span className="label-text mb-1">Copies of this card</span>
+            <input
+              className="input input-bordered w-full"
+              type="number"
+              min={1}
+              step={1}
+              value={card.quantity}
+              onChange={(event) => {
+                const quantity = Number(event.currentTarget.value)
+                if (Number.isInteger(quantity) && quantity >= 1) {
+                  onCardChange({ ...card, quantity })
+                }
+              }}
+            />
+          </label>
         </div>
-      </div>
-
-      <aside className="rounded-box border border-base-300 bg-base-100 p-5">
-        <h2 className="text-lg font-semibold">Print preview</h2>
-        <p className="mb-4 text-sm text-base-content/60">
-          {card.quantity} card{card.quantity === 1 ? '' : 's'} · {card.width} × {card.height} pt
+        {bleedMode === 'COLOR' && (
+          <label className="form-control mt-4 w-fit">
+            <span className="label-text mb-1">Bleed color</span>
+            <input
+              className="input input-bordered h-12 w-20 p-1"
+              type="color"
+              value={card.bleedColor}
+              onChange={(event) =>
+                onCardChange({ ...card, bleedColor: event.currentTarget.value })
+              }
+            />
+          </label>
+        )}
+        <p className="mt-3 text-sm text-base-content/60">
+          {DEFAULT_BLEED} pt bleed · Crop area {area.width} × {area.height} pt
         </p>
-        <div className="space-y-4">
-          {(['front', 'back'] as const).map((side) => {
-            const processedSource = processedSources[side]
-            return (
-              <div key={side}>
-                <h3 className="mb-1 text-sm font-medium capitalize">{side}</h3>
-                <div className="flex min-h-32 items-center justify-center rounded-box bg-base-200 p-3">
-                  {processedSource ? (
-                    <img
-                      className="max-h-48 max-w-full object-contain"
-                      src={processedSource}
-                      alt={`${side} print preview`}
-                    />
-                  ) : (
-                    <span className="text-sm text-base-content/50">Crop an image to preview</span>
-                  )}
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      </aside>
+      </section>
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        {(['front', 'back'] as const).map((side) => {
+          const source = side === 'front' ? card.frontSrc : card.backSrc
+          const crop = side === 'front' ? card.frontCrop : card.backCrop
+
+          return (
+            <SideCrop
+              key={`${side}-${source ?? 'empty'}-${area.width}-${area.height}`}
+              side={side}
+              source={source ?? ''}
+              crop={crop}
+              areaWidth={area.width}
+              areaHeight={area.height}
+              bleedMode={bleedMode}
+              bleed={DEFAULT_BLEED}
+              error={errors[side]}
+              onImageSelect={onImageSelect}
+              onCropChange={onCropChange}
+              onProcessedImage={onProcessedImage}
+              onError={onError}
+            />
+          )
+        })}
+      </div>
     </div>
   )
 }

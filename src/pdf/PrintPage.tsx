@@ -1,12 +1,15 @@
 import { Fragment } from 'react'
 import { Image, View } from '@react-pdf/renderer'
+import type { Size } from '../lib/geometry.ts'
 import { DEFAULT_BLEED } from '../lib/geometry.ts'
 import type { Placement } from '../lib/layout.ts'
-import type { Card } from '../types.ts'
+import type { BleedMode, Card } from '../types.ts'
 
 type PrintPageProps = {
   placements: Placement[]
   cards: Card[]
+  cardSize: Size
+  bleedMode: BleedMode
   side: 'front' | 'back'
   drawCropMarks: boolean
 }
@@ -18,11 +21,11 @@ type CropMark = {
   height: number
 }
 
-function cropMarks(placement: Placement, card: Card): CropMark[] {
+function cropMarks(placement: Placement, cardSize: Size): CropMark[] {
   const trimLeft = placement.x + DEFAULT_BLEED
   const trimTop = placement.y + DEFAULT_BLEED
-  const trimRight = trimLeft + card.width
-  const trimBottom = trimTop + card.height
+  const trimRight = trimLeft + cardSize.width
+  const trimBottom = trimTop + cardSize.height
   const gap = 1
   const length = 6
   const thickness = 0.5
@@ -42,6 +45,8 @@ function cropMarks(placement: Placement, card: Card): CropMark[] {
 export default function PrintPage({
   placements,
   cards,
+  cardSize,
+  bleedMode,
   side,
   drawCropMarks,
 }: PrintPageProps) {
@@ -51,14 +56,15 @@ export default function PrintPage({
     <>
       {placements.flatMap((placement, placementIndex) => {
         const card = cardsById.get(placement.cardId)
-        const source = side === 'front' ? card?.frontSrc : card?.backSrc
+        const source =
+          side === 'front' ? card?.frontProcessedSrc : card?.backProcessedSrc
         if (!card || !source) return []
 
-        const isImageBleed = card.bleedMode === 'IMAGE'
+        const isImageBleed = bleedMode === 'IMAGE'
         const imageLeft = isImageBleed ? placement.x : placement.x + DEFAULT_BLEED
         const imageTop = isImageBleed ? placement.y : placement.y + DEFAULT_BLEED
-        const imageWidth = isImageBleed ? placement.width : card.width
-        const imageHeight = isImageBleed ? placement.height : card.height
+        const imageWidth = isImageBleed ? placement.width : cardSize.width
+        const imageHeight = isImageBleed ? placement.height : cardSize.height
 
         return (
           <Fragment key={`card-${placementIndex}`}>
@@ -89,10 +95,9 @@ export default function PrintPage({
       })}
       {drawCropMarks &&
         placements.flatMap((placement, placementIndex) => {
-          const card = cardsById.get(placement.cardId)
-          if (!card) return []
+          if (!cardsById.has(placement.cardId)) return []
 
-          return cropMarks(placement, card).map((mark, markIndex) => (
+          return cropMarks(placement, cardSize).map((mark, markIndex) => (
             <View
               key={`mark-${placementIndex}-${markIndex}`}
               style={{

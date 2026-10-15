@@ -20,7 +20,7 @@ export type Page = {
 
 export function layoutPages(cards: Card[], grid: Grid): Page[] {
   const printableCards = cards.flatMap((card) =>
-    card.frontSrc && card.frontCrop
+    card.frontProcessedSrc && card.frontCrop
       ? Array.from({ length: card.quantity }, () => card)
       : [],
   )
