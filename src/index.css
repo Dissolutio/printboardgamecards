@@ -8,3 +8,14 @@
   box-shadow: 0 0 2px rgb(0 0 0 / 80%);
   pointer-events: none;
 }
+
+.zoom-number-input {
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+.zoom-number-input::-webkit-inner-spin-button,
+.zoom-number-input::-webkit-outer-spin-button {
+  margin: 0;
+  -webkit-appearance: none;
+}

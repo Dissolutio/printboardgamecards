@@ -15,7 +15,14 @@ import type {
   CardSide,
   PixelCropRect,
 } from '../types.ts'
-import { clampZoom, MAX_ZOOM, MIN_ZOOM, parseZoomInput, ZOOM_STEP } from '../lib/zoom.ts'
+import {
+  clampZoom,
+  COARSE_ZOOM_STEP,
+  FINE_ZOOM_STEP,
+  MAX_ZOOM,
+  MIN_ZOOM,
+  parseZoomInput,
+} from '../lib/zoom.ts'
 
 type CardEditorProps = {
   card: Card
@@ -83,7 +90,7 @@ function SideCrop({
   const [workspaceSize, setWorkspaceSize] = useState({ width: 0, height: 0 })
   const [cropPosition, setCropPosition] = useState<Point>({ x: 0, y: 0 })
   const [zoom, setZoom] = useState(1)
-  const [zoomInput, setZoomInput] = useState('1.0')
+  const [zoomInput, setZoomInput] = useState('1.00')
   const [mediaSize, setMediaSize] = useState<MediaSize | undefined>(undefined)
   const aspect = areaWidth / areaHeight
   const visibleBackground = backgroundFor(card, side)
@@ -189,13 +196,13 @@ function SideCrop({
     const nextZoom = clampZoom(value)
     sliderChanging.current = true
     setZoom(nextZoom)
-    setZoomInput(nextZoom.toFixed(1))
+    setZoomInput(nextZoom.toFixed(2))
   }
 
   function commitZoomInput() {
     const parsed = parseZoomInput(zoomInput)
     if (parsed === undefined) {
-      setZoomInput(zoom.toFixed(1))
+      setZoomInput(zoom.toFixed(2))
       return
     }
 
@@ -215,18 +222,26 @@ function SideCrop({
       return
     }
 
-    if (event.key === '+' || event.key === '=' || event.key === '-') {
+    const zoomOut = event.key === '-' || event.key === '_' || event.code === 'NumpadSubtract'
+    const zoomIn = event.key === '+' || event.key === '=' || event.code === 'NumpadAdd'
+    if (zoomIn || zoomOut) {
       event.preventDefault()
-      handleZoomChange(zoom + (event.key === '-' ? -ZOOM_STEP : ZOOM_STEP))
+      const step = event.shiftKey ? FINE_ZOOM_STEP : COARSE_ZOOM_STEP
+      handleZoomChange(zoom + (zoomOut ? -step : step))
     }
   }
 
   function handleWorkspaceKeyUp(event: KeyboardEvent<HTMLDivElement>) {
-    if (
-      event.key.startsWith('Arrow') ||
+    const zoomKey =
       event.key === '+' ||
       event.key === '=' ||
-      event.key === '-'
+      event.key === '-' ||
+      event.key === '_' ||
+      event.code === 'NumpadAdd' ||
+      event.code === 'NumpadSubtract'
+    if (
+      event.key.startsWith('Arrow') ||
+      zoomKey
     ) {
       finishZoomInteraction()
     }
@@ -318,8 +333,9 @@ function SideCrop({
           <div>
             <div
               ref={workspaceRef}
-              className="cropper-workspace relative w-full overflow-hidden rounded-box focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-2"
+              className="cropper-workspace relative w-full overflow-hidden rounded-box focus:outline focus:outline-2 focus:outline-primary focus:outline-offset-2"
               tabIndex={0}
+              onPointerDownCapture={() => workspaceRef.current?.focus({ preventScroll: true })}
               onKeyDown={handleWorkspaceKeyDown}
               onKeyUp={handleWorkspaceKeyUp}
               style={{
@@ -356,7 +372,7 @@ function SideCrop({
                   onCropChange={setCropPosition}
                   onZoomChange={(value) => {
                     setZoom(value)
-                    setZoomInput(clampZoom(value).toFixed(1))
+                    setZoomInput(clampZoom(value).toFixed(2))
                   }}
                   onCropAreaChange={(_area, areaPixels) => {
                     latestCrop.current = asCrop(areaPixels)
@@ -391,7 +407,7 @@ function SideCrop({
               )}
             </div>
             <p className="mt-1 text-xs text-base-content/60">
-              Drag to pan. Arrow keys nudge. + / - zoom.
+              Click the image, then: arrow keys nudge (Shift = 10x), + / - zoom 0.1 (Shift = 0.01).
             </p>
 
             <div className="mt-3 flex flex-wrap items-center gap-3">
@@ -418,55 +434,97 @@ function SideCrop({
                   type="range"
                   min={MIN_ZOOM}
                   max={MAX_ZOOM}
-                  step={ZOOM_STEP}
+                  step={FINE_ZOOM_STEP}
                   value={zoom}
                   onChange={(event) => handleZoomChange(Number(event.currentTarget.value))}
                   onPointerUp={finishZoomInteraction}
                   onKeyUp={finishZoomInteraction}
                   onBlur={finishZoomInteraction}
+                  title="Zoom. Left/Right arrow keys: 0.01."
+                  aria-label="Zoom. Left/Right arrow keys: 0.01."
                 />
               </label>
               <div className="join">
                 <button
                   className="btn btn-sm join-item"
                   type="button"
-                  aria-label="Zoom out"
+                  aria-label="Zoom out by 0.1"
+                  title="Zoom out by 0.1"
                   onClick={() => {
-                    handleZoomChange(zoom - ZOOM_STEP)
+                    handleZoomChange(zoom - COARSE_ZOOM_STEP)
                     finishZoomInteraction()
                   }}
                 >
                   −
                 </button>
-                <input
-                  className="input input-bordered input-sm join-item w-20 text-center"
-                  type="number"
-                  min={MIN_ZOOM}
-                  max={MAX_ZOOM}
-                  step={ZOOM_STEP}
-                  aria-label="Zoom level"
-                  value={zoomInput}
-                  onChange={(event) => setZoomInput(event.currentTarget.value)}
-                  onBlur={commitZoomInput}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter') {
-                      event.preventDefault()
-                      commitZoomInput()
-                      event.currentTarget.blur()
-                    }
-                  }}
-                  onKeyUp={(event) => {
-                    if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
-                      commitZoomInput()
-                    }
-                  }}
-                />
+                <div className="relative">
+                  <input
+                    className="input input-bordered input-sm zoom-number-input w-24 pr-7 text-center"
+                    type="number"
+                    min={MIN_ZOOM}
+                    max={MAX_ZOOM}
+                    step={FINE_ZOOM_STEP}
+                    aria-label="Type an exact zoom value. Up/Down keys: 0.01 (Shift: 0.1)."
+                    title="Type an exact zoom value. Up/Down keys: 0.01 (Shift: 0.1)."
+                    value={zoomInput}
+                    onChange={(event) => setZoomInput(event.currentTarget.value)}
+                    onBlur={commitZoomInput}
+                    onKeyDown={(event) => {
+                      if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+                        event.preventDefault()
+                        const step = event.shiftKey
+                          ? COARSE_ZOOM_STEP
+                          : FINE_ZOOM_STEP
+                        handleZoomChange(
+                          zoom + (event.key === 'ArrowDown' ? -step : step),
+                        )
+                      } else if (event.key === 'Enter') {
+                        event.preventDefault()
+                        event.currentTarget.blur()
+                      }
+                    }}
+                    onKeyUp={(event) => {
+                      if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+                        finishZoomInteraction()
+                      }
+                    }}
+                  />
+                  <span className="absolute inset-y-0 right-0 flex w-6 flex-col border-l border-base-300">
+                    <button
+                      className="flex h-1/2 flex-1 items-center justify-center text-[9px] leading-none hover:bg-base-200"
+                      type="button"
+                      aria-label="Zoom in by 0.01"
+                      title="Zoom in by 0.01"
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => {
+                        handleZoomChange(zoom + FINE_ZOOM_STEP)
+                        finishZoomInteraction()
+                      }}
+                    >
+                      ▲
+                    </button>
+                    <button
+                      className="flex h-1/2 flex-1 items-center justify-center text-[9px] leading-none hover:bg-base-200"
+                      type="button"
+                      aria-label="Zoom out by 0.01"
+                      title="Zoom out by 0.01"
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => {
+                        handleZoomChange(zoom - FINE_ZOOM_STEP)
+                        finishZoomInteraction()
+                      }}
+                    >
+                      ▼
+                    </button>
+                  </span>
+                </div>
                 <button
                   className="btn btn-sm join-item"
                   type="button"
-                  aria-label="Zoom in"
+                  aria-label="Zoom in by 0.1"
+                  title="Zoom in by 0.1"
                   onClick={() => {
-                    handleZoomChange(zoom + ZOOM_STEP)
+                    handleZoomChange(zoom + COARSE_ZOOM_STEP)
                     finishZoomInteraction()
                   }}
                 >

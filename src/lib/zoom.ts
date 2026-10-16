@@ -1,4 +1,6 @@
-export const ZOOM_STEP = 0.1
+export const COARSE_ZOOM_STEP = 0.1
+export const FINE_ZOOM_STEP = 0.01
+export const ZOOM_STEP = COARSE_ZOOM_STEP
 export const MIN_ZOOM = 0.1
 export const MAX_ZOOM = 10
 
@@ -17,7 +19,7 @@ export function clampZoom(
   }
 
   const bounded = Math.min(max, Math.max(min, value))
-  const rounded = Number((Math.round(bounded / ZOOM_STEP) * ZOOM_STEP).toFixed(1))
+  const rounded = Number((Math.round((bounded + Number.EPSILON) * 100) / 100).toFixed(2))
   return Math.min(max, Math.max(min, rounded))
 }
 
