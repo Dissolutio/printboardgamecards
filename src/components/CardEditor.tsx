@@ -407,7 +407,7 @@ function SideCrop({
               )}
             </div>
             <p className="mt-1 text-xs text-base-content/60">
-              Click the image, then: arrow keys nudge (Shift = 10x), + / - zoom 0.1 (Shift = 0.01).
+              Click the image, then use your keyboard: arrow keys nudge the image (hold Shift for 10x). The + and - keys zoom by 0.1 (hold Shift for 0.01).
             </p>
 
             <div className="mt-3 flex flex-wrap items-center gap-3">
@@ -444,92 +444,97 @@ function SideCrop({
                   aria-label="Zoom. Left/Right arrow keys: 0.01."
                 />
               </label>
-              <div className="join">
-                <button
-                  className="btn btn-sm join-item"
-                  type="button"
-                  aria-label="Zoom out by 0.1"
-                  title="Zoom out by 0.1"
-                  onClick={() => {
-                    handleZoomChange(zoom - COARSE_ZOOM_STEP)
-                    finishZoomInteraction()
-                  }}
-                >
-                  −
-                </button>
-                <div className="relative">
-                  <input
-                    className="input input-bordered input-sm zoom-number-input w-24 pr-7 text-center"
-                    type="number"
-                    min={MIN_ZOOM}
-                    max={MAX_ZOOM}
-                    step={FINE_ZOOM_STEP}
-                    aria-label="Type an exact zoom value. Up/Down keys: 0.01 (Shift: 0.1)."
-                    title="Type an exact zoom value. Up/Down keys: 0.01 (Shift: 0.1)."
-                    value={zoomInput}
-                    onChange={(event) => setZoomInput(event.currentTarget.value)}
-                    onBlur={commitZoomInput}
-                    onKeyDown={(event) => {
-                      if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
-                        event.preventDefault()
-                        const step = event.shiftKey
-                          ? COARSE_ZOOM_STEP
-                          : FINE_ZOOM_STEP
-                        handleZoomChange(
-                          zoom + (event.key === 'ArrowDown' ? -step : step),
-                        )
-                      } else if (event.key === 'Enter') {
-                        event.preventDefault()
-                        event.currentTarget.blur()
-                      }
+              <div className="flex min-w-0 flex-col items-center">
+                <div className="join">
+                  <button
+                    className="btn btn-sm join-item"
+                    type="button"
+                    aria-label="Zoom out by 0.1"
+                    title="Zoom out by 0.1"
+                    onClick={() => {
+                      handleZoomChange(zoom - COARSE_ZOOM_STEP)
+                      finishZoomInteraction()
                     }}
-                    onKeyUp={(event) => {
-                      if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
-                        finishZoomInteraction()
-                      }
+                  >
+                    −
+                  </button>
+                  <div className="relative">
+                    <input
+                      className="input input-bordered input-sm zoom-number-input w-24 pr-7 text-center"
+                      type="number"
+                      min={MIN_ZOOM}
+                      max={MAX_ZOOM}
+                      step={FINE_ZOOM_STEP}
+                      aria-label="Type an exact zoom value. Up/Down keys: 0.01 (Shift: 0.1)."
+                      title="Type an exact zoom value. Up/Down keys: 0.01 (Shift: 0.1)."
+                      value={zoomInput}
+                      onChange={(event) => setZoomInput(event.currentTarget.value)}
+                      onBlur={commitZoomInput}
+                      onKeyDown={(event) => {
+                        if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+                          event.preventDefault()
+                          const step = event.shiftKey
+                            ? COARSE_ZOOM_STEP
+                            : FINE_ZOOM_STEP
+                          handleZoomChange(
+                            zoom + (event.key === 'ArrowDown' ? -step : step),
+                          )
+                        } else if (event.key === 'Enter') {
+                          event.preventDefault()
+                          event.currentTarget.blur()
+                        }
+                      }}
+                      onKeyUp={(event) => {
+                        if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+                          finishZoomInteraction()
+                        }
+                      }}
+                    />
+                    <span className="absolute inset-y-0 right-0 flex w-6 flex-col border-l border-base-300">
+                      <button
+                        className="flex h-1/2 flex-1 items-center justify-center text-[9px] leading-none hover:bg-base-200"
+                        type="button"
+                        aria-label="Zoom in by 0.01"
+                        title="Zoom in by 0.01"
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => {
+                          handleZoomChange(zoom + FINE_ZOOM_STEP)
+                          finishZoomInteraction()
+                        }}
+                      >
+                        ▲
+                      </button>
+                      <button
+                        className="flex h-1/2 flex-1 items-center justify-center text-[9px] leading-none hover:bg-base-200"
+                        type="button"
+                        aria-label="Zoom out by 0.01"
+                        title="Zoom out by 0.01"
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => {
+                          handleZoomChange(zoom - FINE_ZOOM_STEP)
+                          finishZoomInteraction()
+                        }}
+                      >
+                        ▼
+                      </button>
+                    </span>
+                  </div>
+                  <button
+                    className="btn btn-sm join-item"
+                    type="button"
+                    aria-label="Zoom in by 0.1"
+                    title="Zoom in by 0.1"
+                    onClick={() => {
+                      handleZoomChange(zoom + COARSE_ZOOM_STEP)
+                      finishZoomInteraction()
                     }}
-                  />
-                  <span className="absolute inset-y-0 right-0 flex w-6 flex-col border-l border-base-300">
-                    <button
-                      className="flex h-1/2 flex-1 items-center justify-center text-[9px] leading-none hover:bg-base-200"
-                      type="button"
-                      aria-label="Zoom in by 0.01"
-                      title="Zoom in by 0.01"
-                      onMouseDown={(event) => event.preventDefault()}
-                      onClick={() => {
-                        handleZoomChange(zoom + FINE_ZOOM_STEP)
-                        finishZoomInteraction()
-                      }}
-                    >
-                      ▲
-                    </button>
-                    <button
-                      className="flex h-1/2 flex-1 items-center justify-center text-[9px] leading-none hover:bg-base-200"
-                      type="button"
-                      aria-label="Zoom out by 0.01"
-                      title="Zoom out by 0.01"
-                      onMouseDown={(event) => event.preventDefault()}
-                      onClick={() => {
-                        handleZoomChange(zoom - FINE_ZOOM_STEP)
-                        finishZoomInteraction()
-                      }}
-                    >
-                      ▼
-                    </button>
-                  </span>
+                  >
+                    +
+                  </button>
                 </div>
-                <button
-                  className="btn btn-sm join-item"
-                  type="button"
-                  aria-label="Zoom in by 0.1"
-                  title="Zoom in by 0.1"
-                  onClick={() => {
-                    handleZoomChange(zoom + COARSE_ZOOM_STEP)
-                    finishZoomInteraction()
-                  }}
-                >
-                  +
-                </button>
+                <p className="max-w-[15rem] break-words text-center text-[10px] leading-tight text-base-content/60">
+                  - / + : 0.1 steps   ▲ / ▼ : 0.01 steps (fine)
+                </p>
               </div>
             </div>
           </div>
