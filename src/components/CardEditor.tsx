@@ -31,6 +31,7 @@ type CardEditorProps = {
   onCardChange: (card: Card) => void
   onBleedModeChange: (cardId: string, mode: BleedMode) => void
   onImageSelect: (side: CardSide, file: File) => void
+  onImageRemove: (side: CardSide) => void
   onCropChange: (side: CardSide, crop: PixelCropRect) => void
   onProcessedImage: (side: CardSide, blob: Blob) => void
   onError: (side: CardSide, message: string | undefined) => void
@@ -50,6 +51,7 @@ type SideCropProps = {
   background: CardBackground
   error?: string
   onImageSelect: (side: CardSide, file: File) => void
+  onImageRemove: (side: CardSide) => void
   onCropChange: (side: CardSide, crop: PixelCropRect) => void
   onProcessedImage: (side: CardSide, blob: Blob) => void
   onError: (side: CardSide, message: string | undefined) => void
@@ -78,10 +80,12 @@ function SideCrop({
   onCropChange,
   onProcessedImage,
   onError,
+  onImageRemove,
   onBackgroundToggle,
   onBackgroundChange,
 }: SideCropProps) {
   const workspaceRef = useRef<HTMLDivElement>(null)
+  const imageInputRef = useRef<HTMLInputElement>(null)
   const renderId = useRef(0)
   const latestCrop = useRef<PixelCropRect | undefined>(undefined)
   const sliderChanging = useRef(false)
@@ -314,19 +318,33 @@ function SideCrop({
         )}
       </div>
 
-      <label className="form-control mb-3 w-full">
-        <span className="label-text mb-1">Upload {side} image</span>
-        <input
-          className="file-input file-input-bordered w-full"
-          type="file"
-          accept="image/*"
-          onChange={(event) => {
-            const file = event.currentTarget.files?.[0]
-            if (file) onImageSelect(side, file)
-            event.currentTarget.value = ''
+      <div className="mb-3 flex items-end gap-2">
+        <label className="form-control min-w-0 flex-1">
+          <span className="label-text mb-1">Upload {side} image</span>
+          <input
+            ref={imageInputRef}
+            className="file-input file-input-bordered w-full"
+            type="file"
+            accept="image/*"
+            onChange={(event) => {
+              const file = event.currentTarget.files?.[0]
+              if (file) onImageSelect(side, file)
+              event.currentTarget.value = ''
+            }}
+          />
+        </label>
+        <button
+          className="btn btn-outline btn-error"
+          type="button"
+          disabled={!source}
+          onClick={() => {
+            if (imageInputRef.current) imageInputRef.current.value = ''
+            onImageRemove(side)
           }}
-        />
-      </label>
+        >
+          Remove image
+        </button>
+      </div>
 
       {source ? (
         <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(140px,220px)]">
@@ -587,6 +605,7 @@ export default function CardEditor({
   onCardChange,
   onBleedModeChange,
   onImageSelect,
+  onImageRemove,
   onCropChange,
   onProcessedImage,
   onError,
@@ -681,6 +700,7 @@ export default function CardEditor({
               background={sideBackground}
               error={errors[side]}
               onImageSelect={onImageSelect}
+              onImageRemove={onImageRemove}
               onCropChange={onCropChange}
               onProcessedImage={onProcessedImage}
               onError={onError}

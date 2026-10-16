@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { addCard, deleteCard, duplicateCard, totalCopies } from './deck.ts'
+import {
+  addCard,
+  deleteCard,
+  duplicateCard,
+  quantityLabel,
+  stepQuantity,
+  totalCopies,
+} from './deck.ts'
 import type { Card } from '../types.ts'
 
 function createCard(id: string, quantity: number): Card {
@@ -39,5 +46,16 @@ describe('deck helpers', () => {
 
   it('totals copies across all cards', () => {
     expect(totalCopies([createCard('first', 3), createCard('second', 2)])).toBe(5)
+  })
+
+  it('steps copy counts without going below one', () => {
+    expect(stepQuantity(1, -1)).toBe(1)
+    expect(stepQuantity(1, 1)).toBe(2)
+    expect(stepQuantity(2, -1)).toBe(1)
+  })
+
+  it('labels singular and plural copy counts correctly', () => {
+    expect(quantityLabel(1)).toBe('1 copy')
+    expect(quantityLabel(2)).toBe('2 copies')
   })
 })

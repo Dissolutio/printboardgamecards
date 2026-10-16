@@ -4,7 +4,14 @@ import CardEditor from './components/CardEditor.tsx'
 import CardFace from './components/CardFace.tsx'
 import DuplexDoc from './pdf/DuplexDoc.tsx'
 import PrintAndGlueDoc from './pdf/PrintAndGlueDoc.tsx'
-import { addCard, deleteCard, duplicateCard, totalCopies } from './lib/deck.ts'
+import {
+  addCard,
+  deleteCard,
+  duplicateCard,
+  quantityLabel,
+  stepQuantity,
+  totalCopies,
+} from './lib/deck.ts'
 import {
   calculateGrid,
   calculateTightGrid,
@@ -31,6 +38,44 @@ const ZERO_CALIBRATION: Calibration = { offsetX: 0, offsetY: 0 }
 type PaperName = keyof typeof PAPER
 type PresetName = keyof typeof CARD_PRESETS
 type ExportMode = 'PRINT_GLUE' | 'DUPLEX'
+type QuantityDirection = -1 | 1
+
+type QuantityStepperProps = {
+  quantity: number
+  cardLabel: string
+  onStep: (direction: QuantityDirection) => void
+}
+
+function QuantityStepper({ quantity, cardLabel, onStep }: QuantityStepperProps) {
+  return (
+    <div className="join join-sm" role="group" aria-label={`${cardLabel} copy count`}>
+      <button
+        className="btn btn-xs join-item"
+        type="button"
+        aria-label={`Decrease ${cardLabel} copies`}
+        title={`Decrease ${cardLabel} copies`}
+        onClick={() => onStep(-1)}
+      >
+        −
+      </button>
+      <output
+        className="join-item min-w-14 px-2 text-center text-xs"
+        aria-label={quantityLabel(quantity)}
+      >
+        {quantityLabel(quantity)}
+      </output>
+      <button
+        className="btn btn-xs join-item"
+        type="button"
+        aria-label={`Increase ${cardLabel} copies`}
+        title={`Increase ${cardLabel} copies`}
+        onClick={() => onStep(1)}
+      >
+        +
+      </button>
+    </div>
+  )
+}
 
 function isPresetName(value: string): value is PresetName {
   return Object.prototype.hasOwnProperty.call(CARD_PRESETS, value)
@@ -198,6 +243,16 @@ function App() {
     replaceCards(nextCards)
   }
 
+  function handleQuantityStep(cardId: string, direction: QuantityDirection) {
+    const currentCard = cardsRef.current.find((card) => card.id === cardId)
+    if (!currentCard) return
+
+    updateCard({
+      ...currentCard,
+      quantity: stepQuantity(currentCard.quantity, direction),
+    })
+  }
+
   function beginCardOperation(cardId: string): number {
     const token = (cardOperationTokens.current.get(cardId) ?? 0) + 1
     cardOperationTokens.current.set(cardId, token)
@@ -303,6 +358,34 @@ function App() {
         }
       }
     })()
+  }
+
+  function handleImageRemove(side: CardSide) {
+    const currentCard = cardsRef.current.find((card) => card.id === selectedId)
+    if (!currentCard) return
+
+    const sourceKey = side === 'front' ? 'frontSrc' : 'backSrc'
+    const processedKey = side === 'front' ? 'frontProcessedSrc' : 'backProcessedSrc'
+    const cropKey = side === 'front' ? 'frontCrop' : 'backCrop'
+    beginCardOperation(currentCard.id)
+
+    const nextCard = {
+      ...currentCard,
+      [sourceKey]: undefined,
+      [processedKey]: undefined,
+      [cropKey]: undefined,
+    }
+    const nextCards = cardsRef.current.map((card) =>
+      card.id === currentCard.id ? nextCard : card,
+    )
+    replaceCards(nextCards)
+    revokeUnusedUrls(
+      [currentCard[sourceKey], currentCard[processedKey]].filter(
+        (url): url is string => url !== undefined,
+      ),
+      nextCards,
+    )
+    setErrors((current) => ({ ...current, [side]: undefined }))
   }
 
   function handleCropChange(side: CardSide, crop: PixelCropRect) {
@@ -661,11 +744,15 @@ function App() {
                   </span>
                   <span className="min-w-0">
                     <span className="block font-medium">Card {index + 1}</span>
-                    <span className="block text-sm text-base-content/60">
-                      {card.quantity} cop{card.quantity === 1 ? 'y' : 'ies'}
-                    </span>
                   </span>
                 </button>
+                <div className="mt-2 flex justify-end">
+                  <QuantityStepper
+                    quantity={card.quantity}
+                    cardLabel={`Card ${index + 1}`}
+                    onStep={(direction) => handleQuantityStep(card.id, direction)}
+                  />
+                </div>
                 {(!card.frontProcessedSrc || !card.frontCrop) && (
                   <p className="mt-2 text-sm text-warning">
                     Front crop required; this card will be skipped during export.
@@ -736,6 +823,7 @@ function App() {
               onCardChange={updateCard}
               onBleedModeChange={handleBleedModeChange}
               onImageSelect={handleImageSelect}
+              onImageRemove={handleImageRemove}
               onCropChange={handleCropChange}
               onProcessedImage={handleProcessedImage}
               onError={handleError}
@@ -755,9 +843,14 @@ function App() {
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {cards.map((card, index) => (
                 <article key={card.id} className="rounded-box border border-base-300 p-3">
-                  <h3 className="mb-2 font-medium">
-                    Card {index + 1} · {card.quantity} {card.quantity === 1 ? 'copy' : 'copies'}
-                  </h3>
+                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                    <h3 className="font-medium">Card {index + 1}</h3>
+                    <QuantityStepper
+                      quantity={card.quantity}
+                      cardLabel={`Card ${index + 1}`}
+                      onStep={(direction) => handleQuantityStep(card.id, direction)}
+                    />
+                  </div>
                   <div className="grid grid-cols-2 gap-2">
                     {SIDES.map((side) => {
                       const source =
@@ -783,6 +876,19 @@ function App() {
             </div>
           )}
         </section>
+        <footer className="mt-8 text-center text-xs text-base-content/50">
+          <a
+            target="_blank"
+            rel="noopener noreferrer"
+            href="https://icons8.com/icon/A78RbSB5l7fM/cut"
+          >
+            Cut
+          </a>{' '}
+          icon by{' '}
+          <a target="_blank" rel="noopener noreferrer" href="https://icons8.com">
+            Icons8
+          </a>
+        </footer>
       </div>
     </main>
   )
