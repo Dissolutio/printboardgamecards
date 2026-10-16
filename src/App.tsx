@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { pdf } from '@react-pdf/renderer'
 import CardEditor from './components/CardEditor.tsx'
 import CardFace from './components/CardFace.tsx'
+import CalibrationDoc from './pdf/CalibrationDoc.tsx'
 import DuplexDoc from './pdf/DuplexDoc.tsx'
 import PrintAndGlueDoc from './pdf/PrintAndGlueDoc.tsx'
 import {
@@ -17,11 +18,20 @@ import {
   calculateTightGrid,
   CARD_PRESETS,
   DEFAULT_BLEED,
+  mmToPt,
   PAPER,
   type Size,
 } from './lib/geometry.ts'
 import { cropAreaSize } from './lib/crop.ts'
 import { centeredMaximumCrop, convertCropForBleedMode } from './lib/cropConvert.ts'
+import {
+  addCalibration,
+  calibrationFromObserved,
+  clampCalibration,
+  loadCalibration,
+  saveCalibration,
+  type CalibrationMm,
+} from './lib/calibration.ts'
 import { hasBackground } from './lib/piece.ts'
 import { loadImageSize, renderCrop } from './lib/renderCrop.ts'
 import {
@@ -33,7 +43,7 @@ import type { BleedMode, Card, CardSide, PixelCropRect } from './types.ts'
 
 const SIDES: CardSide[] = ['front', 'back']
 const PAPER_OPTIONS: (keyof typeof PAPER)[] = ['LETTER', 'A4']
-const ZERO_CALIBRATION: Calibration = { offsetX: 0, offsetY: 0 }
+const ZERO_CALIBRATION_MM: CalibrationMm = { offsetXmm: 0, offsetYmm: 0 }
 
 type PaperName = keyof typeof PAPER
 type PresetName = keyof typeof CARD_PRESETS
@@ -200,6 +210,14 @@ function App() {
   const [isChangingPreset, setIsChangingPreset] = useState(false)
   const [paperName, setPaperName] = useState<PaperName>('LETTER')
   const [exportMode, setExportMode] = useState<ExportMode>('PRINT_GLUE')
+  const [calibration, setCalibration] = useState<CalibrationMm>(loadCalibration)
+  const [calibrationDraft, setCalibrationDraft] = useState({
+    offsetXmm: calibration.offsetXmm.toFixed(2),
+    offsetYmm: calibration.offsetYmm.toFixed(2),
+  })
+  const [observedXmm, setObservedXmm] = useState('')
+  const [observedYmm, setObservedYmm] = useState('')
+  const [calibrationStorageWarning, setCalibrationStorageWarning] = useState<string>()
   const [isExporting, setIsExporting] = useState(false)
   const [exportError, setExportError] = useState<string>()
   const [errors, setErrors] = useState<Record<CardSide, string | undefined>>({
@@ -211,11 +229,15 @@ function App() {
   const cardSize = CARD_PRESETS[presetName]
   const grid = calculateGrid({ paper, card: cardSize, bleed: DEFAULT_BLEED })
   const tightGrid = calculateTightGrid({ paper, card: cardSize })
+  const calibrationPt: Calibration = {
+    offsetX: mmToPt(calibration.offsetXmm),
+    offsetY: mmToPt(calibration.offsetYmm),
+  }
   const selectedCard = cards.find((card) => card.id === selectedId)
   const pageCount =
     exportMode === 'PRINT_GLUE'
       ? layoutPrintAndGlue(cards, tightGrid).length
-      : layoutDuplexPages(cards, grid, ZERO_CALIBRATION).length
+      : layoutDuplexPages(cards, grid, calibrationPt).length
 
   useEffect(
     () => () => {
@@ -251,6 +273,63 @@ function App() {
       ...currentCard,
       quantity: stepQuantity(currentCard.quantity, direction),
     })
+  }
+
+  function persistCalibration(nextCalibration: CalibrationMm) {
+    const normalized = clampCalibration(nextCalibration)
+    setCalibration(normalized)
+    setCalibrationDraft({
+      offsetXmm: normalized.offsetXmm.toFixed(2),
+      offsetYmm: normalized.offsetYmm.toFixed(2),
+    })
+    setCalibrationStorageWarning(
+      saveCalibration(normalized)
+        ? undefined
+        : 'Calibration changes could not be saved; reloading may lose them.',
+    )
+  }
+
+  function commitCalibrationAxis(axis: keyof CalibrationMm) {
+    const input = calibrationDraft[axis]
+    const value = input.trim() === '' ? Number.NaN : Number(input)
+    if (!Number.isFinite(value)) {
+      setCalibrationDraft((current) => ({
+        ...current,
+        [axis]: calibration[axis].toFixed(2),
+      }))
+      return
+    }
+    persistCalibration({ ...calibration, [axis]: value })
+  }
+
+  function resetCalibration() {
+    persistCalibration(ZERO_CALIBRATION_MM)
+  }
+
+  function applyObservedCorrection() {
+    const currentCalibration = clampCalibration({
+      offsetXmm:
+        calibrationDraft.offsetXmm.trim() === ''
+          ? calibration.offsetXmm
+          : Number(calibrationDraft.offsetXmm),
+      offsetYmm:
+        calibrationDraft.offsetYmm.trim() === ''
+          ? calibration.offsetYmm
+          : Number(calibrationDraft.offsetYmm),
+    })
+    const observationX = Number(observedXmm)
+    const observationY = Number(observedYmm)
+    if (!Number.isFinite(observationX) || !Number.isFinite(observationY)) return
+
+    const nextCalibration = clampCalibration(
+      addCalibration(
+        currentCalibration,
+        calibrationFromObserved(observationX, observationY),
+      ),
+    )
+    persistCalibration(nextCalibration)
+    setObservedXmm('')
+    setObservedYmm('')
   }
 
   function beginCardOperation(cardId: string): number {
@@ -620,7 +699,7 @@ function App() {
             paper={paper}
             grid={grid}
             cardSize={cardSize}
-            calibration={ZERO_CALIBRATION}
+            calibration={calibrationPt}
           />
         )
       const pdfBlob = await pdf(pdfDocument).toBlob()
@@ -628,6 +707,34 @@ function App() {
     } catch (error) {
       setExportError(
         error instanceof Error ? error.message : 'PDF export failed. Please try again.',
+      )
+    } finally {
+      setIsExporting(false)
+    }
+  }
+
+  async function handleDownloadCalibrationSheet() {
+    setIsExporting(true)
+    setExportError(undefined)
+
+    try {
+      const pdfBlob = await pdf(
+        <CalibrationDoc
+          paper={paper}
+          cardSize={cardSize}
+          grid={grid}
+          calibration={calibrationPt}
+        />,
+      ).toBlob()
+      downloadPdfBlob(
+        pdfBlob,
+        `printboard-calibration-${paperName.toLowerCase()}.pdf`,
+      )
+    } catch (error) {
+      setExportError(
+        error instanceof Error
+          ? error.message
+          : 'Calibration sheet export failed. Please try again.',
       )
     } finally {
       setIsExporting(false)
@@ -705,6 +812,134 @@ function App() {
             </label>
           </div>
         </section>
+
+        {exportMode === 'DUPLEX' && (
+          <section className="mb-6 space-y-4 rounded-box border border-base-300 bg-base-100 p-5">
+            <div>
+              <h2 className="text-lg font-semibold">Calibration</h2>
+              <p className="mt-2 text-sm text-base-content/70">
+                1. Print the sheet at Actual Size (100%, no Fit to Page). 2. Flip the paper on its LONG edge and print page 2 on the back; the BACK arrow should end up at the top. 3. Hold the sheet up to a light. Look from the FRONT side. 4. Measure how far the square marks sit from the circle marks, and enter it below. 5. Press Apply correction, then print the sheet again to confirm.
+              </p>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="form-control">
+                <span className="label-text mb-1">Current X offset (mm)</span>
+                <input
+                  className="input input-bordered w-full"
+                  type="number"
+                  min={-10}
+                  max={10}
+                  step={0.05}
+                  value={calibrationDraft.offsetXmm}
+                  onChange={(event) =>
+                    setCalibrationDraft((current) => ({
+                      ...current,
+                      offsetXmm: event.currentTarget.value,
+                    }))
+                  }
+                  onBlur={() => commitCalibrationAxis('offsetXmm')}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') event.currentTarget.blur()
+                  }}
+                />
+              </label>
+              <label className="form-control">
+                <span className="label-text mb-1">Current Y offset (mm)</span>
+                <input
+                  className="input input-bordered w-full"
+                  type="number"
+                  min={-10}
+                  max={10}
+                  step={0.05}
+                  value={calibrationDraft.offsetYmm}
+                  onChange={(event) =>
+                    setCalibrationDraft((current) => ({
+                      ...current,
+                      offsetYmm: event.currentTarget.value,
+                    }))
+                  }
+                  onBlur={() => commitCalibrationAxis('offsetYmm')}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') event.currentTarget.blur()
+                  }}
+                />
+              </label>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <button
+                className="btn btn-outline"
+                type="button"
+                onClick={resetCalibration}
+              >
+                Reset to 0
+              </button>
+              <button
+                className="btn btn-primary"
+                type="button"
+                disabled={isExporting}
+                onClick={handleDownloadCalibrationSheet}
+              >
+                {isExporting ? 'Preparing calibration sheet…' : 'Download calibration sheet'}
+              </button>
+            </div>
+
+            <fieldset className="space-y-3 rounded-box border border-base-300 p-4">
+              <legend className="px-1 font-medium">Apply measured correction</legend>
+              <label className="form-control gap-1">
+                <span className="label-text">
+                  Looking from the front, the back marks appear
+                </span>
+                <span className="flex flex-wrap items-center gap-2">
+                  <input
+                    className="input input-bordered w-28"
+                    type="number"
+                    step={0.05}
+                    aria-label="Observed horizontal offset in millimetres"
+                    value={observedXmm}
+                    onChange={(event) => setObservedXmm(event.currentTarget.value)}
+                  />
+                  <span className="text-sm">
+                    mm to the RIGHT of the front marks (negative = left)
+                  </span>
+                </span>
+              </label>
+              <label className="form-control gap-1">
+                <span className="label-text">
+                  Looking from the front, the back marks appear
+                </span>
+                <span className="flex flex-wrap items-center gap-2">
+                  <input
+                    className="input input-bordered w-28"
+                    type="number"
+                    step={0.05}
+                    aria-label="Observed vertical offset in millimetres"
+                    value={observedYmm}
+                    onChange={(event) => setObservedYmm(event.currentTarget.value)}
+                  />
+                  <span className="text-sm">mm LOWER (negative = higher)</span>
+                </span>
+              </label>
+              <button
+                className="btn btn-secondary"
+                type="button"
+                onClick={applyObservedCorrection}
+              >
+                Apply correction
+              </button>
+            </fieldset>
+
+            <p className="text-sm text-base-content/70">
+              Measure at two opposite corners. If they differ by more than 0.5 mm, your printer is scaling or skewing the page; enter the average and tell us.
+            </p>
+            {calibrationStorageWarning && (
+              <p className="text-sm text-warning" role="status">
+                {calibrationStorageWarning}
+              </p>
+            )}
+          </section>
+        )}
 
         <section className="mb-6 rounded-box border border-base-300 bg-base-100 p-5">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
