@@ -73,3 +73,9 @@ export default defineConfig([
 ])
 
 ```
+
+## Checks
+
+- `npm test -- --run` — run unit tests
+- `npm run lint` — check code style
+- `npm run build` — type check and production build
