@@ -1,78 +1,43 @@
-# React + TypeScript + Vite
+# Printboard Game Cards
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Printboard Game Cards is a browser app for preparing board-game cards from your images and exporting print-ready PDFs on Letter or A4 paper. You can crop each card side, set its bleed and background, and choose how many copies to print.
 
-Currently, two official plugins are available:
+## Print modes
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- **Single-sided (print, cut, glue):** Packs card fronts and available backs onto pages with 5 mm gaps between pieces. The layout can rotate cards when that orientation fits more pieces.
+- **Double-sided hand-cut:** Prints aligned front and back pages for duplex printing, with crop marks and calibration adjustments.
+- **Double-sided machine-cut:** Not implemented yet.
 
-## React Compiler
+## Duplex calibration
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+Calibration adjusts the back only; the front stays fixed. Entered X and Y offsets are in millimeters and are saved in the browser's `localStorage`. The calibration sheet and on-screen instructions help measure and adjust duplex alignment.
 
-## Expanding the ESLint configuration
+## Sizes and units
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+Geometry and layout calculations use PostScript points (72 pt per inch). Measurements shown for calibration and the print-and-glue gaps are in millimeters. The available card presets are **Poker**, **Bridge**, **Mini**, and **Tarot**. Paper sizes are **Letter** and **A4**.
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+## Project layout
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+- `src/lib/` contains geometry, crop, calibration, layout, and cut-file logic as pure functions; unit tests are alongside the modules.
+- `src/pdf/` contains the PDF documents and page, card-piece, and crop-mark components.
+- `src/components/` contains the card editor and card-face UI.
+- `src/App.tsx` assembles the app UI and connects editing, calibration, and PDF export.
+- `src/types.ts` contains shared card and crop types.
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+The cut-file generators in `src/lib/` can produce SVG (`cutSvg.ts`), DXF (`cutDxf.ts`), and HPGL (`cutHpgl.ts`) output. They are not wired into the UI.
 
-```
+## Status
 
-You can also install [eslint-plugin-react-x](https://npmx.dev/package/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://npmx.dev/package/eslint-plugin-react-dom) for React-specific lint rules:
+The code's duplex calibration convention is: positive X moves the back left, and positive Y moves the back down; the front does not move. This sign convention, real-printer scale and gaps, and cutting-machine output have **not** been verified by real printing or cutting.
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+## Development
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+Install dependencies with `npm install`, then use these scripts:
 
-```
+- `npm run dev` — start the development server
+- `npm run build` — type-check and create a production build
+- `npm test -- --run` — run unit tests
+- `npm run lint` — check code style
 
 ## Checks
 
