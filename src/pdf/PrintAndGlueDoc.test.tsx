@@ -66,10 +66,11 @@ function pageMediaBoxes(pdfText: string): number[][] {
 
 describe('PrintAndGlueDoc PDF rendering', () => {
   for (const { name, paper, expectedBox } of paperCases) {
-    it(`renders four front/back pairs on ${name} pages at the paper dimensions`, async () => {
-      const cards = makeCards(4)
+    it(`renders rotated front/back pairs on ${name} pages at the paper dimensions`, async () => {
+      const cards = makeCards(5)
       const cardSize = CARD_PRESETS.POKER
       const grid = calculateTightGrid({ paper, card: cardSize })
+      expect(grid.orientation).toBe('ROTATED')
       const pdfBytes = await renderToBuffer(
         <PrintAndGlueDoc
           cards={cards}
@@ -85,7 +86,7 @@ describe('PrintAndGlueDoc PDF rendering', () => {
       expect(mediaBoxes).toHaveLength(2)
       expect(mediaBoxes).toEqual([expectedBox, expectedBox])
       expect(pdfText).toContain('/Subtype /Image')
-      expect(pageContent.match(/\/I\d+ Do/g)).toHaveLength(8)
+      expect(pageContent.match(/\/I\d+ Do/g)).toHaveLength(10)
       expect(pageContent).toContain('1 0 0 scn')
       expect(pageContent).toContain('0 0 1 scn')
       expect(pageContent).toContain('0 1 0 scn')

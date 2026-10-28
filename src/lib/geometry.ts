@@ -21,6 +21,7 @@ export const CARD_PRESETS = {
 } as const
 
 export const DEFAULT_BLEED = 9
+export type PieceOrientation = 'AUTO' | 'UPRIGHT' | 'ROTATED'
 
 export function mmToPt(mm: number): number {
   return (mm * 72) / 25.4
@@ -70,11 +71,13 @@ export function calculateTightGrid({
   card,
   gap = mmToPt(5),
   margin = mmToPt(5),
+  orientation = 'AUTO',
 }: {
   paper: Size
   card: Size
   gap?: number
   margin?: number
+  orientation?: PieceOrientation
 }): {
   cols: number
   rows: number
@@ -85,15 +88,41 @@ export function calculateTightGrid({
   originX: number
   originY: number
   gap: number
+  orientation: Exclude<PieceOrientation, 'AUTO'>
+  cardSize: Size
 } {
   if (gap < 0 || margin < 0) {
     throw new RangeError('Grid gap and margin must be non-negative.')
   }
 
+  const upright = { orientation: 'UPRIGHT' as const, cardSize: card }
+  const rotated = {
+    orientation: 'ROTATED' as const,
+    cardSize: { width: card.height, height: card.width },
+  }
+  const candidates = [upright, rotated]
+  const pieceCount = (candidate: (typeof candidates)[number]) =>
+    Math.max(
+      0,
+      Math.floor((paper.width - 2 * margin + gap) / (candidate.cardSize.width + gap)),
+    ) *
+    Math.max(
+      0,
+      Math.floor((paper.height - 2 * margin + gap) / (candidate.cardSize.height + gap)),
+    )
+  const chosen =
+    orientation === 'AUTO'
+      ? candidates.reduce((best, candidate) => {
+          return pieceCount(candidate) > pieceCount(best) ? candidate : best
+        })
+      : orientation === 'UPRIGHT'
+        ? upright
+        : rotated
+
   const usableW = paper.width - 2 * margin
   const usableH = paper.height - 2 * margin
-  const cellW = card.width + gap
-  const cellH = card.height + gap
+  const cellW = chosen.cardSize.width + gap
+  const cellH = chosen.cardSize.height + gap
   const cols = Math.floor((usableW + gap) / cellW)
   const rows = Math.floor((usableH + gap) / cellH)
   const gridW = cols > 0 ? cols * cellW - gap : 0
@@ -109,6 +138,8 @@ export function calculateTightGrid({
     originX: (paper.width - gridW) / 2,
     originY: (paper.height - gridH) / 2,
     gap,
+    orientation: chosen.orientation,
+    cardSize: chosen.cardSize,
   }
 }
 

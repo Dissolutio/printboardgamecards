@@ -56,24 +56,76 @@ describe('calculateGrid', () => {
 })
 
 describe('calculateTightGrid', () => {
-  it('fits Poker cards on Letter paper in a 3 by 2 grid', () => {
+  it('auto-rotates Poker cards on Letter paper to fit eight pieces', () => {
     const grid = calculateTightGrid({
       paper: PAPER.LETTER,
       card: CARD_PRESETS.POKER,
     })
 
-    expect(grid.cols).toBe(3)
-    expect(grid.rows).toBe(2)
+    expect(grid.cols).toBe(2)
+    expect(grid.rows).toBe(4)
+    expect(grid.orientation).toBe('ROTATED')
+    expect(grid.cardSize).toEqual({ width: 252, height: 180 })
   })
 
-  it('fits Poker cards on A4 paper in a 2 by 3 grid', () => {
+  it('auto-rotates Poker cards on A4 paper to fit eight pieces', () => {
     const grid = calculateTightGrid({
       paper: PAPER.A4,
       card: CARD_PRESETS.POKER,
     })
 
     expect(grid.cols).toBe(2)
-    expect(grid.rows).toBe(3)
+    expect(grid.rows).toBe(4)
+    expect(grid.orientation).toBe('ROTATED')
+  })
+
+  it('keeps Mini cards upright when that orientation fits more pieces', () => {
+    const grid = calculateTightGrid({
+      paper: PAPER.LETTER,
+      card: CARD_PRESETS.MINI,
+    })
+
+    expect(grid.orientation).toBe('UPRIGHT')
+    expect(grid.cols * grid.rows).toBe(16)
+  })
+
+  it('keeps Tarot cards upright when that orientation fits more pieces', () => {
+    const grid = calculateTightGrid({
+      paper: PAPER.LETTER,
+      card: CARD_PRESETS.TAROT,
+    })
+
+    expect(grid.orientation).toBe('UPRIGHT')
+    expect(grid.cols * grid.rows).toBe(4)
+  })
+
+  it('forces either orientation when requested', () => {
+    const upright = calculateTightGrid({
+      paper: PAPER.LETTER,
+      card: CARD_PRESETS.POKER,
+      orientation: 'UPRIGHT',
+    })
+    const rotated = calculateTightGrid({
+      paper: PAPER.LETTER,
+      card: CARD_PRESETS.POKER,
+      orientation: 'ROTATED',
+    })
+
+    expect(upright.orientation).toBe('UPRIGHT')
+    expect(upright.cardSize).toEqual(CARD_PRESETS.POKER)
+    expect([upright.cols, upright.rows]).toEqual([3, 2])
+    expect(rotated.orientation).toBe('ROTATED')
+    expect(rotated.cardSize).toEqual({ width: 252, height: 180 })
+    expect([rotated.cols, rotated.rows]).toEqual([2, 4])
+  })
+
+  it('keeps upright orientation when piece counts tie', () => {
+    const grid = calculateTightGrid({
+      paper: { width: 1, height: 1 },
+      card: CARD_PRESETS.POKER,
+    })
+
+    expect(grid.orientation).toBe('UPRIGHT')
   })
 })
 

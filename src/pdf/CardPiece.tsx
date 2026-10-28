@@ -3,13 +3,14 @@ import { DEFAULT_BLEED } from '../lib/geometry.ts'
 import { hasBackground, pieceFills } from '../lib/piece.ts'
 import type { Placement } from '../lib/layout.ts'
 import type { Card, CardSide } from '../types.ts'
-import type { Size } from '../lib/geometry.ts'
+import type { PieceOrientation, Size } from '../lib/geometry.ts'
 
 type CardPieceProps = {
   card: Card
   placement: Placement
   cardSize: Size
   side: CardSide
+  orientation?: PieceOrientation
   paintedBleed?: number
   clipToPaintedRect?: boolean
 }
@@ -19,6 +20,7 @@ export default function CardPiece({
   placement,
   cardSize,
   side,
+  orientation = 'UPRIGHT',
   paintedBleed = DEFAULT_BLEED,
   clipToPaintedRect = false,
 }: CardPieceProps) {
@@ -35,6 +37,50 @@ export default function CardPiece({
     bleedMode === 'COLOR' ? cardSize.width : cardSize.width + 2 * DEFAULT_BLEED
   const fullArtworkHeight =
     bleedMode === 'COLOR' ? cardSize.height : cardSize.height + 2 * DEFAULT_BLEED
+
+  if (orientation === 'ROTATED') {
+    const uprightPlacement = {
+      ...placement,
+      x: 0,
+      y: 0,
+      width: placement.height,
+      height: placement.width,
+    }
+
+    return (
+      <View
+        style={{
+          position: 'absolute',
+          left: placement.x,
+          top: placement.y,
+          width: placement.width,
+          height: placement.height,
+          overflow: 'hidden',
+        }}
+      >
+        <View
+          style={{
+            position: 'absolute',
+            left: (placement.width - placement.height) / 2,
+            top: (placement.height - placement.width) / 2,
+            width: placement.height,
+            height: placement.width,
+            transform: 'rotate(90deg)',
+          }}
+        >
+          <CardPiece
+            card={card}
+            placement={uprightPlacement}
+            cardSize={cardSize}
+            side={side}
+            orientation="UPRIGHT"
+            paintedBleed={paintedBleed}
+            clipToPaintedRect={clipToPaintedRect}
+          />
+        </View>
+      </View>
+    )
+  }
 
   if (clipToPaintedRect) {
     return (
