@@ -43,6 +43,7 @@ export default function PrintAndGlueDoc({
                   placement={placement}
                   cardSize={cardSize}
                   side={placement.side}
+                  orientation={grid.orientation}
                   paintedBleed={placement.paintedBleed}
                   clipToPaintedRect
                 />
@@ -56,6 +57,7 @@ export default function PrintAndGlueDoc({
                 bleed={placement.paintedBleed}
                 offset={1}
                 length={4}
+                rotated={grid.orientation === 'ROTATED'}
               />
             ))}
           </View>

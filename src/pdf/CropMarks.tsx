@@ -16,6 +16,7 @@ type CropMarksProps = {
   bleed?: number
   offset?: number
   length?: number
+  rotated?: boolean
 }
 
 function cropMarkRects(
@@ -24,7 +25,41 @@ function cropMarkRects(
   bleed: number,
   offset: number,
   length: number,
+  rotated: boolean,
 ): CropMark[] {
+  if (rotated) {
+    const uprightPlacement = {
+      ...placement,
+      x: placement.x + (placement.width - placement.height) / 2,
+      y: placement.y + (placement.height - placement.width) / 2,
+      width: placement.height,
+      height: placement.width,
+    }
+    const centerX = uprightPlacement.x + bleed + cardSize.width / 2
+    const centerY = uprightPlacement.y + bleed + cardSize.height / 2
+
+    return cropMarkRects(
+      uprightPlacement,
+      cardSize,
+      bleed,
+      offset,
+      length,
+      false,
+    ).map((mark) => {
+      const markCenterX = mark.left + mark.width / 2
+      const markCenterY = mark.top + mark.height / 2
+      const rotatedCenterX = centerX - (markCenterY - centerY)
+      const rotatedCenterY = centerY + (markCenterX - centerX)
+
+      return {
+        left: rotatedCenterX - mark.height / 2,
+        top: rotatedCenterY - mark.width / 2,
+        width: mark.height,
+        height: mark.width,
+      }
+    })
+  }
+
   const trimLeft = placement.x + bleed
   const trimTop = placement.y + bleed
   const trimRight = trimLeft + cardSize.width
@@ -49,10 +84,11 @@ export default function CropMarks({
   bleed = DEFAULT_BLEED,
   offset = 1,
   length = 6,
+  rotated = false,
 }: CropMarksProps) {
   return (
     <>
-      {cropMarkRects(placement, cardSize, bleed, offset, length).map((mark, index) => (
+      {cropMarkRects(placement, cardSize, bleed, offset, length, rotated).map((mark, index) => (
         <View
           key={index}
           style={{

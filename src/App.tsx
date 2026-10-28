@@ -20,6 +20,7 @@ import {
   DEFAULT_BLEED,
   mmToPt,
   PAPER,
+  type PieceOrientation,
   type Size,
 } from './lib/geometry.ts'
 import { cropAreaSize } from './lib/crop.ts'
@@ -210,6 +211,7 @@ function App() {
   const [isChangingPreset, setIsChangingPreset] = useState(false)
   const [paperName, setPaperName] = useState<PaperName>('LETTER')
   const [exportMode, setExportMode] = useState<ExportMode>('PRINT_GLUE')
+  const [pieceOrientation, setPieceOrientation] = useState<PieceOrientation>('AUTO')
   const [calibration, setCalibration] = useState<CalibrationMm>(loadCalibration)
   const [calibrationDraft, setCalibrationDraft] = useState({
     offsetXmm: calibration.offsetXmm.toFixed(2),
@@ -228,7 +230,11 @@ function App() {
   const paper = PAPER[paperName]
   const cardSize = CARD_PRESETS[presetName]
   const grid = calculateGrid({ paper, card: cardSize, bleed: DEFAULT_BLEED })
-  const tightGrid = calculateTightGrid({ paper, card: cardSize })
+  const tightGrid = calculateTightGrid({
+    paper,
+    card: cardSize,
+    orientation: pieceOrientation,
+  })
   const calibrationPt: Calibration = {
     offsetX: mmToPt(calibration.offsetXmm),
     offsetY: mmToPt(calibration.offsetYmm),
@@ -810,6 +816,27 @@ function App() {
                 <option value="DUPLEX">Double-sided hand-cut</option>
               </select>
             </label>
+            {exportMode === 'PRINT_GLUE' && (
+              <label className="form-control">
+                <span className="label-text mb-1">Piece orientation</span>
+                <select
+                  className="select select-bordered w-full"
+                  value={pieceOrientation}
+                  onChange={(event) =>
+                    setPieceOrientation(
+                      event.currentTarget.value === 'UPRIGHT' ||
+                        event.currentTarget.value === 'ROTATED'
+                        ? event.currentTarget.value
+                        : 'AUTO',
+                    )
+                  }
+                >
+                  <option value="AUTO">Auto</option>
+                  <option value="UPRIGHT">Upright</option>
+                  <option value="ROTATED">Rotated</option>
+                </select>
+              </label>
+            )}
           </div>
         </section>
 

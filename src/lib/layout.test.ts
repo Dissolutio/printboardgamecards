@@ -118,8 +118,8 @@ describe('layoutDuplexPages', () => {
       )
       const pieces = pages.flatMap((page) => page.placements)
 
-      expect(pages).toHaveLength(2)
-      expect(pages.map((page) => page.placements.length)).toEqual([6, 2])
+      expect(pages).toHaveLength(1)
+      expect(pages.map((page) => page.placements.length)).toEqual([8])
       expect(pieces.map((placement) => placement.side)).toEqual([
         'front',
         'front',
@@ -143,7 +143,7 @@ describe('layoutDuplexPages', () => {
       expect(grid.gap).toBeCloseTo(mmToPt(5))
 
       const [firstFront, secondFront] = pages[0].placements
-      const firstTrimRight = firstFront.x + firstFront.paintedBleed + CARD_PRESETS.POKER.width
+      const firstTrimRight = firstFront.x + firstFront.paintedBleed + grid.cardSize.width
       const secondTrimLeft = secondFront.x + secondFront.paintedBleed
       expect(secondTrimLeft - firstTrimRight).toBeCloseTo(mmToPt(5))
     })
@@ -161,10 +161,52 @@ describe('layoutDuplexPages', () => {
       for (const page of pages) {
         for (let first = 0; first < page.placements.length; first += 1) {
           const a = page.placements[first]
-          expect(a.x).toBeGreaterThanOrEqual(margin - 1e-8)
-          expect(a.y).toBeGreaterThanOrEqual(margin - 1e-8)
-          expect(a.x + a.width).toBeLessThanOrEqual(PAPER.LETTER.width - margin + 1e-8)
-          expect(a.y + a.height).toBeLessThanOrEqual(PAPER.LETTER.height - margin + 1e-8)
+          expect(a.x + a.paintedBleed).toBeGreaterThanOrEqual(margin - 1e-8)
+          expect(a.y + a.paintedBleed).toBeGreaterThanOrEqual(margin - 1e-8)
+          expect(
+            a.x + a.paintedBleed + grid.cardSize.width,
+          ).toBeLessThanOrEqual(PAPER.LETTER.width - margin + 1e-8)
+          expect(
+            a.y + a.paintedBleed + grid.cardSize.height,
+          ).toBeLessThanOrEqual(PAPER.LETTER.height - margin + 1e-8)
+
+          for (let second = first + 1; second < page.placements.length; second += 1) {
+            const b = page.placements[second]
+            const separated =
+              a.x + a.width <= b.x ||
+              b.x + b.width <= a.x ||
+              a.y + a.height <= b.y ||
+              b.y + b.height <= a.y
+            expect(separated).toBe(true)
+          }
+        }
+      }
+    })
+
+    it('keeps forced rotated placements within margins and separated by the gap', () => {
+      const rotatedGrid = calculateTightGrid({
+        paper: PAPER.LETTER,
+        card: CARD_PRESETS.POKER,
+        orientation: 'ROTATED',
+      })
+      const pages = layoutPrintAndGlue(
+        [makeCard('rotated', 8, 'front', 'back')],
+        rotatedGrid,
+      )
+      const margin = mmToPt(5)
+
+      expect(rotatedGrid.cardSize).toEqual({ width: 252, height: 180 })
+      for (const page of pages) {
+        for (let first = 0; first < page.placements.length; first += 1) {
+          const a = page.placements[first]
+          expect(a.x + a.paintedBleed).toBeGreaterThanOrEqual(margin - 1e-8)
+          expect(a.y + a.paintedBleed).toBeGreaterThanOrEqual(margin - 1e-8)
+          expect(
+            a.x + a.paintedBleed + rotatedGrid.cardSize.width,
+          ).toBeLessThanOrEqual(PAPER.LETTER.width - margin + 1e-8)
+          expect(
+            a.y + a.paintedBleed + rotatedGrid.cardSize.height,
+          ).toBeLessThanOrEqual(PAPER.LETTER.height - margin + 1e-8)
 
           for (let second = first + 1; second < page.placements.length; second += 1) {
             const b = page.placements[second]
