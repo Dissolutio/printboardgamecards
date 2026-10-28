@@ -90,6 +90,46 @@ describe('buildCutDxf', () => {
     }
   })
 
+  it('writes a metric header, continuous linetype, and R12 polyline elevations', () => {
+    const output = buildCutDxf({ paper, grid, cardSize, count: 2 })
+    const sections = [...output.matchAll(/0\nSECTION\n2\n([A-Z]+)\n/g)].map(
+      ([, name]) => name,
+    )
+
+    expect(sections).toEqual(['HEADER', 'TABLES', 'ENTITIES'])
+    expect(output.indexOf('2\nHEADER\n')).toBeLessThan(output.indexOf('2\nTABLES\n'))
+    expect(output).toContain(
+      '9\n$ACADVER\n1\nAC1009\n9\n$INSUNITS\n70\n4\n9\n$MEASUREMENT\n70\n1\n',
+    )
+    expect(output).toContain(
+      '0\nTABLE\n2\nLTYPE\n70\n1\n0\nLTYPE\n2\nCONTINUOUS\n70\n0\n3\nSolid line\n72\n65\n73\n0\n40\n0.0\n0\nENDTAB\n',
+    )
+    expect(output).toMatch(/0\nTABLE\n2\nLAYER\n70\n1\n0\nLAYER\n/)
+    expect([...output.matchAll(/0\nLAYER\n/g)]).toHaveLength(1)
+    expect([...output.matchAll(/0\nENDSEC\n/g)]).toHaveLength(sections.length)
+    expect(output.match(/0\nPOLYLINE\n8\nCUT\n66\n1\n70\n1\n10\n0\n20\n0\n30\n0/g)).toHaveLength(2)
+    expect(output.trimEnd()).toMatch(/0\nEOF$/)
+  })
+
+  it('keeps the existing coordinates for a two-card export', () => {
+    const polylines = parseDxfPolylines(buildCutDxf({ paper, grid, cardSize, count: 2 }))
+
+    expect(polylines).toEqual([
+      [
+        { x: 41.275, y: 231.775 },
+        { x: 104.775, y: 231.775 },
+        { x: 104.775, y: 142.875 },
+        { x: 41.275, y: 142.875 },
+      ],
+      [
+        { x: 111.125, y: 231.775 },
+        { x: 174.625, y: 231.775 },
+        { x: 174.625, y: 142.875 },
+        { x: 111.125, y: 142.875 },
+      ],
+    ])
+  })
+
   it('flips top-row coordinates upward and emits no invalid values', () => {
     const output = buildCutDxf({ paper, grid, cardSize, count: 4 })
     const polylines = parseDxfPolylines(output)
@@ -97,7 +137,7 @@ describe('buildCutDxf', () => {
     const lowerYs = polylines[2].map(({ y }) => y)
 
     expect(Math.min(...firstYs)).toBeGreaterThan(Math.max(...lowerYs))
-    expect(output).not.toMatch(/NaN|undefined|\$/)
+    expect(output).not.toMatch(/NaN|undefined/)
   })
 
   it('preserves card bounds with rounded corners', () => {
