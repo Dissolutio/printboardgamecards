@@ -44,3 +44,7 @@ Install dependencies with `npm install`, then use these scripts:
 - `npm test -- --run` — run unit tests
 - `npm run lint` — check code style
 - `npm run build` — type check and production build
+
+## Regenerating the classic deck
+
+Run `npm run deck:build` to fetch the pinned public-domain/WTFPL Vector-Playing-Cards source and regenerate the cleaned SVGs and manifest in `public/decks/classic/`. The build script bundles licensed fonts in `scripts/fonts/`; their license notices are included alongside them.

@@ -1,0 +1,5 @@
+The Classic deck artwork is public domain / WTFPL.
+
+Artwork by Byron Knoll, collected by Peter Tripp.
+Source: https://github.com/notpeter/Vector-Playing-Cards
+Source commit: 861b338eb931d635c442b568071e3829e552f383

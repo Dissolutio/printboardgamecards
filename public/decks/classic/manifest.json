@@ -1,0 +1,337 @@
+{
+  "id": "classic",
+  "name": "Classic",
+  "source": "https://github.com/notpeter/Vector-Playing-Cards",
+  "commit": "861b338eb931d635c442b568071e3829e552f383",
+  "license": "Public domain / WTFPL",
+  "viewBox": {
+    "width": 167.0869141,
+    "height": 242.6669922
+  },
+  "cards": [
+    {
+      "id": "AS",
+      "rank": "A",
+      "suit": "S",
+      "file": "AS.svg"
+    },
+    {
+      "id": "AH",
+      "rank": "A",
+      "suit": "H",
+      "file": "AH.svg"
+    },
+    {
+      "id": "AD",
+      "rank": "A",
+      "suit": "D",
+      "file": "AD.svg"
+    },
+    {
+      "id": "AC",
+      "rank": "A",
+      "suit": "C",
+      "file": "AC.svg"
+    },
+    {
+      "id": "2S",
+      "rank": "2",
+      "suit": "S",
+      "file": "2S.svg"
+    },
+    {
+      "id": "2H",
+      "rank": "2",
+      "suit": "H",
+      "file": "2H.svg"
+    },
+    {
+      "id": "2D",
+      "rank": "2",
+      "suit": "D",
+      "file": "2D.svg"
+    },
+    {
+      "id": "2C",
+      "rank": "2",
+      "suit": "C",
+      "file": "2C.svg"
+    },
+    {
+      "id": "3S",
+      "rank": "3",
+      "suit": "S",
+      "file": "3S.svg"
+    },
+    {
+      "id": "3H",
+      "rank": "3",
+      "suit": "H",
+      "file": "3H.svg"
+    },
+    {
+      "id": "3D",
+      "rank": "3",
+      "suit": "D",
+      "file": "3D.svg"
+    },
+    {
+      "id": "3C",
+      "rank": "3",
+      "suit": "C",
+      "file": "3C.svg"
+    },
+    {
+      "id": "4S",
+      "rank": "4",
+      "suit": "S",
+      "file": "4S.svg"
+    },
+    {
+      "id": "4H",
+      "rank": "4",
+      "suit": "H",
+      "file": "4H.svg"
+    },
+    {
+      "id": "4D",
+      "rank": "4",
+      "suit": "D",
+      "file": "4D.svg"
+    },
+    {
+      "id": "4C",
+      "rank": "4",
+      "suit": "C",
+      "file": "4C.svg"
+    },
+    {
+      "id": "5S",
+      "rank": "5",
+      "suit": "S",
+      "file": "5S.svg"
+    },
+    {
+      "id": "5H",
+      "rank": "5",
+      "suit": "H",
+      "file": "5H.svg"
+    },
+    {
+      "id": "5D",
+      "rank": "5",
+      "suit": "D",
+      "file": "5D.svg"
+    },
+    {
+      "id": "5C",
+      "rank": "5",
+      "suit": "C",
+      "file": "5C.svg"
+    },
+    {
+      "id": "6S",
+      "rank": "6",
+      "suit": "S",
+      "file": "6S.svg"
+    },
+    {
+      "id": "6H",
+      "rank": "6",
+      "suit": "H",
+      "file": "6H.svg"
+    },
+    {
+      "id": "6D",
+      "rank": "6",
+      "suit": "D",
+      "file": "6D.svg"
+    },
+    {
+      "id": "6C",
+      "rank": "6",
+      "suit": "C",
+      "file": "6C.svg"
+    },
+    {
+      "id": "7S",
+      "rank": "7",
+      "suit": "S",
+      "file": "7S.svg"
+    },
+    {
+      "id": "7H",
+      "rank": "7",
+      "suit": "H",
+      "file": "7H.svg"
+    },
+    {
+      "id": "7D",
+      "rank": "7",
+      "suit": "D",
+      "file": "7D.svg"
+    },
+    {
+      "id": "7C",
+      "rank": "7",
+      "suit": "C",
+      "file": "7C.svg"
+    },
+    {
+      "id": "8S",
+      "rank": "8",
+      "suit": "S",
+      "file": "8S.svg"
+    },
+    {
+      "id": "8H",
+      "rank": "8",
+      "suit": "H",
+      "file": "8H.svg"
+    },
+    {
+      "id": "8D",
+      "rank": "8",
+      "suit": "D",
+      "file": "8D.svg"
+    },
+    {
+      "id": "8C",
+      "rank": "8",
+      "suit": "C",
+      "file": "8C.svg"
+    },
+    {
+      "id": "9S",
+      "rank": "9",
+      "suit": "S",
+      "file": "9S.svg"
+    },
+    {
+      "id": "9H",
+      "rank": "9",
+      "suit": "H",
+      "file": "9H.svg"
+    },
+    {
+      "id": "9D",
+      "rank": "9",
+      "suit": "D",
+      "file": "9D.svg"
+    },
+    {
+      "id": "9C",
+      "rank": "9",
+      "suit": "C",
+      "file": "9C.svg"
+    },
+    {
+      "id": "10S",
+      "rank": "10",
+      "suit": "S",
+      "file": "10S.svg"
+    },
+    {
+      "id": "10H",
+      "rank": "10",
+      "suit": "H",
+      "file": "10H.svg"
+    },
+    {
+      "id": "10D",
+      "rank": "10",
+      "suit": "D",
+      "file": "10D.svg"
+    },
+    {
+      "id": "10C",
+      "rank": "10",
+      "suit": "C",
+      "file": "10C.svg"
+    },
+    {
+      "id": "JS",
+      "rank": "J",
+      "suit": "S",
+      "file": "JS.svg"
+    },
+    {
+      "id": "JH",
+      "rank": "J",
+      "suit": "H",
+      "file": "JH.svg"
+    },
+    {
+      "id": "JD",
+      "rank": "J",
+      "suit": "D",
+      "file": "JD.svg"
+    },
+    {
+      "id": "JC",
+      "rank": "J",
+      "suit": "C",
+      "file": "JC.svg"
+    },
+    {
+      "id": "QS",
+      "rank": "Q",
+      "suit": "S",
+      "file": "QS.svg"
+    },
+    {
+      "id": "QH",
+      "rank": "Q",
+      "suit": "H",
+      "file": "QH.svg"
+    },
+    {
+      "id": "QD",
+      "rank": "Q",
+      "suit": "D",
+      "file": "QD.svg"
+    },
+    {
+      "id": "QC",
+      "rank": "Q",
+      "suit": "C",
+      "file": "QC.svg"
+    },
+    {
+      "id": "KS",
+      "rank": "K",
+      "suit": "S",
+      "file": "KS.svg"
+    },
+    {
+      "id": "KH",
+      "rank": "K",
+      "suit": "H",
+      "file": "KH.svg"
+    },
+    {
+      "id": "KD",
+      "rank": "K",
+      "suit": "D",
+      "file": "KD.svg"
+    },
+    {
+      "id": "KC",
+      "rank": "K",
+      "suit": "C",
+      "file": "KC.svg"
+    },
+    {
+      "id": "Joker1",
+      "rank": "Joker",
+      "suit": null,
+      "file": "Joker1.svg"
+    },
+    {
+      "id": "Joker2",
+      "rank": "Joker",
+      "suit": null,
+      "file": "Joker2.svg"
+    }
+  ]
+}
