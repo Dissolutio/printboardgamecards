@@ -20,7 +20,11 @@ function parseSvg(svg: string) {
   }).parseFromString(svg, 'image/svg+xml')
 
   expect(errors).toEqual([])
-  return document.documentElement
+  const root = document.documentElement
+  if (!root) {
+    throw new Error('SVG has no document element.')
+  }
+  return root
 }
 
 describe('generateBackSvg', () => {
@@ -39,13 +43,18 @@ describe('generateBackSvg', () => {
         secondary: palette.secondary,
       })
       const root = parseSvg(svg)
-      const firstElement = root.firstChild as Element
+      const firstNode = root.firstChild
+      const firstElement = root.getElementsByTagName('rect').item(0)
+      if (!firstElement) {
+        throw new Error('SVG has no background rectangle.')
+      }
 
       expect(root.tagName).toBe('svg')
       expect(root.getAttribute('width')).toBe(String(size.width))
       expect(root.getAttribute('height')).toBe(String(size.height))
       expect(root.getAttribute('viewBox')).toBe(`0 0 ${size.width} ${size.height}`)
-      expect(firstElement.tagName).toBe('rect')
+      expect(firstNode?.nodeName).toBe('rect')
+      expect(firstElement).toBe(firstNode)
       expect(firstElement.getAttribute('width')).toBe(String(size.width))
       expect(firstElement.getAttribute('height')).toBe(String(size.height))
       expect(firstElement.getAttribute('fill')).toBe(palette.primary)
