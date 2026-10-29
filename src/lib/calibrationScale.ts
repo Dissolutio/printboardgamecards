@@ -27,35 +27,6 @@ function roundThousandth(value: number): number {
   return Math.round(value * 1000) / 1000
 }
 
-export function fullWidthScaleTicks(paperWidthPt: number): ScaleTick[] {
-  return Array.from({ length: 201 }, (_, index) => {
-    const mm = index - 100
-    const kind = mm % 10 === 0 ? 'major' : mm % 5 === 0 ? 'mid' : 'minor'
-
-    return {
-      mm,
-      xPt: roundThousandth(paperWidthPt / 2 + mmToPt(mm)),
-      kind,
-      ...(kind === 'major' ? { label: String(mm) } : {}),
-    }
-  })
-}
-
-export function cornerScaleTicks(): ScaleTick[] {
-  return Array.from({ length: 21 }, (_, index) => {
-    const mm = (index - 10) / 2
-    const kind =
-      mm === 0 ? 'major' : Number.isInteger(mm) ? 'mid' : 'minor'
-
-    return {
-      mm,
-      offsetPt: roundThousandth(mmToPt(mm)),
-      kind,
-      ...(kind === 'mid' ? { label: String(mm) } : {}),
-    }
-  })
-}
-
 function labelIndex(mm: number): number {
   return mm < 0 ? 5 + mm : mm + 4
 }
@@ -94,6 +65,35 @@ export function cornerLabelBoxes(
         height,
       },
     ]
+  })
+}
+
+export function fullWidthScaleTicks(paperWidthPt: number): ScaleTick[] {
+  return Array.from({ length: 201 }, (_, index) => {
+    const mm = index - 100
+    const kind = mm % 10 === 0 ? 'major' : mm % 5 === 0 ? 'mid' : 'minor'
+
+    return {
+      mm,
+      xPt: roundThousandth(paperWidthPt / 2 + mmToPt(mm)),
+      kind,
+      ...(kind === 'major' ? { label: String(mm) } : {}),
+    }
+  })
+}
+
+export function cornerScaleTicks(): ScaleTick[] {
+  return Array.from({ length: 21 }, (_, index) => {
+    const mm = (index - 10) / 2
+    const kind =
+      mm === 0 ? 'major' : Number.isInteger(mm) ? 'mid' : 'minor'
+
+    return {
+      mm,
+      offsetPt: roundThousandth(mmToPt(mm)),
+      kind,
+      ...(kind === 'mid' ? { label: String(mm) } : {}),
+    }
   })
 }
 

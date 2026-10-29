@@ -352,9 +352,6 @@ export default function CalibrationDoc({
                 }}
               />
             ))}
-            {pageMarks.map((mark, index) => (
-              <CalibrationCrosshair key={`mark-${index}`} mark={mark} />
-            ))}
             {scaleY !== null && (
               <FullWidthScale
                 paperWidthPt={paper.width}
@@ -375,6 +372,9 @@ export default function CalibrationDoc({
                   paper={paper}
                 />
               ))}
+            {pageMarks.map((mark, index) => (
+              <CalibrationCrosshair key={`mark-${index}`} mark={mark} />
+            ))}
             <Text
               style={{
                 position: 'absolute',
