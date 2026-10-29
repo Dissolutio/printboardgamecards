@@ -45,6 +45,7 @@ import {
   type PrinterProfiles,
 } from './lib/printerProfiles.ts'
 import { hasBackground } from './lib/piece.ts'
+import { parseMeasurement } from './lib/calibrationInput.ts'
 import { loadImageSize, renderCrop } from './lib/renderCrop.ts'
 import { parseProject, serializeProject } from './lib/project.ts'
 import { findDisallowedSources } from './lib/sourcePolicy.ts'
@@ -64,6 +65,10 @@ import type { BleedMode, Card, CardSide, PixelCropRect } from './types.ts'
 const SIDES: CardSide[] = ['front', 'back']
 const PAPER_OPTIONS: (keyof typeof PAPER)[] = ['LETTER', 'A4']
 const ZERO_CALIBRATION_MM: CalibrationMm = { offsetXmm: 0, offsetYmm: 0 }
+const calibrationNumberFormat = new Intl.NumberFormat(undefined, {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+})
 
 type PaperName = keyof typeof PAPER
 type PresetName = keyof typeof CARD_PRESETS
@@ -252,6 +257,7 @@ function App() {
   })
   const [observedXmm, setObservedXmm] = useState('')
   const [observedYmm, setObservedYmm] = useState('')
+  const [calibrationUpdated, setCalibrationUpdated] = useState(false)
   const [calibrationStorageWarning, setCalibrationStorageWarning] = useState<string>()
   const [isExporting, setIsExporting] = useState(false)
   const [exportError, setExportError] = useState<string>()
@@ -368,9 +374,9 @@ function App() {
           ? activeProfile.offsetYmm
           : Number(calibrationDraft.offsetYmm),
     })
-    const observationX = Number(observedXmm)
-    const observationY = Number(observedYmm)
-    if (!Number.isFinite(observationX) || !Number.isFinite(observationY)) return
+    const observationX = parseMeasurement(observedXmm)
+    const observationY = parseMeasurement(observedYmm)
+    if (observationX === undefined || observationY === undefined) return
 
     const nextCalibration = clampCalibration(
       addCalibration(
@@ -381,6 +387,7 @@ function App() {
     persistActiveCalibration(nextCalibration)
     setObservedXmm('')
     setObservedYmm('')
+    setCalibrationUpdated(true)
   }
 
   function handleSelectPrinter(id: string) {
@@ -1211,54 +1218,11 @@ function App() {
               </button>
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-2">
-              <label className="form-control">
-                <span className="label-text mb-1">Current X offset (mm)</span>
-                <input
-                  className="input input-bordered w-full"
-                  type="number"
-                  min={-10}
-                  max={10}
-                  step={0.05}
-                  value={calibrationDraft.offsetXmm}
-                  onChange={(event) => {
-                    const value = event.currentTarget.value
-                    setCalibrationDraft((current) => ({
-                      ...current,
-                      offsetXmm: value,
-                    }))
-                  }}
-                  onBlur={() => commitCalibrationAxis('offsetXmm')}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter') event.currentTarget.blur()
-                  }}
-                />
-              </label>
-              <label className="form-control">
-                <span className="label-text mb-1">Current Y offset (mm)</span>
-                <input
-                  className="input input-bordered w-full"
-                  type="number"
-                  min={-10}
-                  max={10}
-                  step={0.05}
-                  value={calibrationDraft.offsetYmm}
-                  onChange={(event) => {
-                    const value = event.currentTarget.value
-                    setCalibrationDraft((current) => ({
-                      ...current,
-                      offsetYmm: value,
-                    }))
-                  }}
-                  onBlur={() => commitCalibrationAxis('offsetYmm')}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter') event.currentTarget.blur()
-                  }}
-                />
-              </label>
-            </div>
-
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p>
+                Current offset: X {calibrationNumberFormat.format(activeProfile.offsetXmm)} mm, Y{' '}
+                {calibrationNumberFormat.format(activeProfile.offsetYmm)} mm
+              </p>
               <button
                 className="btn btn-outline"
                 type="button"
@@ -1266,64 +1230,159 @@ function App() {
               >
                 Reset to 0
               </button>
-              <button
-                className="btn btn-primary"
-                type="button"
-                disabled={isProjectControlsDisabled}
-                onClick={handleDownloadCalibrationSheet}
-              >
-                {isExporting ? 'Preparing calibration sheet…' : 'Download calibration sheet'}
-              </button>
             </div>
 
-            <fieldset className="space-y-3 rounded-box border border-base-300 p-4">
-              <legend className="px-1 font-medium">Apply measured correction</legend>
-              <label className="form-control gap-1">
-                <span className="label-text">
-                  Looking from the front, the back marks appear
-                </span>
-                <span className="flex flex-wrap items-center gap-2">
+            <ol className="list-decimal space-y-4 pl-5">
+              <li>
+                <button
+                  className="btn btn-primary"
+                  type="button"
+                  disabled={isProjectControlsDisabled}
+                  onClick={handleDownloadCalibrationSheet}
+                >
+                  {isExporting ? 'Preparing calibration sheet…' : 'Download calibration sheet'}
+                </button>
+              </li>
+              <li className="space-y-1">
+                <p>
+                  Print it double-sided and measure the distance from each front mark to its back
+                  mark at two opposite corners.
+                </p>
+                <p>
+                  If the two distances differ by more than 0.5 mm, the printer is scaling or skewing
+                  the page. Enter the average of the two distances.
+                </p>
+              </li>
+              <li>
+                <fieldset className="space-y-3 rounded-box border border-base-300 p-4">
+                  <legend className="px-1 font-medium">Enter the measured distances.</legend>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <label className="form-control gap-1">
+                      <span className="label-text">
+                        Horizontal distance from the front mark to the back mark (mm)
+                      </span>
+                      <input
+                        className="input input-bordered w-full"
+                        type="number"
+                        step={0.05}
+                        aria-label="Horizontal distance from the front mark to the back mark (mm)"
+                        aria-invalid={
+                          observedXmm.trim() !== '' && parseMeasurement(observedXmm) === undefined
+                        }
+                        aria-describedby="observed-x-hint"
+                        value={observedXmm}
+                        onChange={(event) => {
+                          setObservedXmm(event.currentTarget.value)
+                          setCalibrationUpdated(false)
+                        }}
+                      />
+                      <span id="observed-x-hint" className="text-sm">
+                        Enter a positive number if the back mark is to the right of the front mark.
+                        Enter a negative number if it is to the left.
+                      </span>
+                      {observedXmm.trim() !== '' &&
+                        parseMeasurement(observedXmm) === undefined && (
+                          <span className="text-sm text-error">Enter a number.</span>
+                        )}
+                    </label>
+                    <label className="form-control gap-1">
+                      <span className="label-text">
+                        Vertical distance from the front mark to the back mark (mm)
+                      </span>
+                      <input
+                        className="input input-bordered w-full"
+                        type="number"
+                        step={0.05}
+                        aria-label="Vertical distance from the front mark to the back mark (mm)"
+                        aria-invalid={
+                          observedYmm.trim() !== '' && parseMeasurement(observedYmm) === undefined
+                        }
+                        aria-describedby="observed-y-hint"
+                        value={observedYmm}
+                        onChange={(event) => {
+                          setObservedYmm(event.currentTarget.value)
+                          setCalibrationUpdated(false)
+                        }}
+                      />
+                      <span id="observed-y-hint" className="text-sm">
+                        Enter a positive number if the back mark is lower than the front mark.
+                        Enter a negative number if it is higher.
+                      </span>
+                      {observedYmm.trim() !== '' &&
+                        parseMeasurement(observedYmm) === undefined && (
+                          <span className="text-sm text-error">Enter a number.</span>
+                        )}
+                    </label>
+                  </div>
+                  <button
+                    className="btn btn-secondary"
+                    type="button"
+                    disabled={
+                      parseMeasurement(observedXmm) === undefined ||
+                      parseMeasurement(observedYmm) === undefined ||
+                      isProjectControlsDisabled
+                    }
+                    onClick={applyObservedCorrection}
+                  >
+                    Apply correction
+                  </button>
+                </fieldset>
+              </li>
+            </ol>
+            {calibrationUpdated && (
+              <p className="text-sm text-success" role="status">
+                The offset was updated. Print a new calibration sheet to check the result.
+              </p>
+            )}
+            <details>
+              <summary className="cursor-pointer">Edit offsets directly</summary>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <label className="form-control">
+                  <span className="label-text mb-1">Current X offset (mm)</span>
                   <input
-                    className="input input-bordered w-28"
+                    className="input input-bordered w-full"
                     type="number"
+                    min={-10}
+                    max={10}
                     step={0.05}
-                    aria-label="Observed horizontal offset in millimetres"
-                    value={observedXmm}
-                    onChange={(event) => setObservedXmm(event.currentTarget.value)}
+                    value={calibrationDraft.offsetXmm}
+                    onChange={(event) => {
+                      const value = event.currentTarget.value
+                      setCalibrationDraft((current) => ({
+                        ...current,
+                        offsetXmm: value,
+                      }))
+                    }}
+                    onBlur={() => commitCalibrationAxis('offsetXmm')}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') event.currentTarget.blur()
+                    }}
                   />
-                  <span className="text-sm">
-                    mm to the RIGHT of the front marks (negative = left)
-                  </span>
-                </span>
-              </label>
-              <label className="form-control gap-1">
-                <span className="label-text">
-                  Looking from the front, the back marks appear
-                </span>
-                <span className="flex flex-wrap items-center gap-2">
+                </label>
+                <label className="form-control">
+                  <span className="label-text mb-1">Current Y offset (mm)</span>
                   <input
-                    className="input input-bordered w-28"
+                    className="input input-bordered w-full"
                     type="number"
+                    min={-10}
+                    max={10}
                     step={0.05}
-                    aria-label="Observed vertical offset in millimetres"
-                    value={observedYmm}
-                    onChange={(event) => setObservedYmm(event.currentTarget.value)}
+                    value={calibrationDraft.offsetYmm}
+                    onChange={(event) => {
+                      const value = event.currentTarget.value
+                      setCalibrationDraft((current) => ({
+                        ...current,
+                        offsetYmm: value,
+                      }))
+                    }}
+                    onBlur={() => commitCalibrationAxis('offsetYmm')}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') event.currentTarget.blur()
+                    }}
                   />
-                  <span className="text-sm">mm LOWER (negative = higher)</span>
-                </span>
-              </label>
-              <button
-                className="btn btn-secondary"
-                type="button"
-                onClick={applyObservedCorrection}
-              >
-                Apply correction
-              </button>
-            </fieldset>
-
-            <p className="text-sm text-base-content/70">
-              Measure at two opposite corners. If they differ by more than 0.5 mm, your printer is scaling or skewing the page; enter the average and tell us.
-            </p>
+                </label>
+              </div>
+            </details>
             {calibrationStorageWarning && (
               <p className="text-sm text-warning" role="status">
                 {calibrationStorageWarning}
@@ -1363,7 +1422,6 @@ function App() {
                         cardSize={cardSize}
                         showBleedRing={card.bleedMode === 'COLOR'}
                         source={side === 'front' ? card.frontProcessedSrc : card.backProcessedSrc}
-                        placeholder={side === 'front' ? 'No front' : 'No back'}
                         alt={`Card ${index + 1} ${side} thumbnail`}
                       />
                     ))}
@@ -1379,15 +1437,14 @@ function App() {
                     onStep={(direction) => handleQuantityStep(card.id, direction)}
                   />
                 </div>
-                {(!card.frontProcessedSrc || !card.frontCrop) && (
-                  <p className="mt-2 text-sm text-warning">
-                    Front crop required; this card will be skipped during export.
-                  </p>
-                )}
-                {(!card.backProcessedSrc || !card.backCrop) &&
-                  !hasBackground(card, 'back') && (
+                  {card.frontSrc && (!card.frontProcessedSrc || !card.frontCrop) && (
                     <p className="mt-2 text-sm text-warning">
-                      No back image or background; no back piece will be printed.
+                      Front crop required; this card will be skipped during export.
+                    </p>
+                  )}
+                  {!card.backSrc && !hasBackground(card, 'back') && (
+                    <p className="mt-2 text-sm text-warning">
+                      This card has no back image and no back background. No back will be printed.
                     </p>
                   )}
                 <div className="mt-3 flex gap-2">
@@ -1554,7 +1611,11 @@ function App() {
                             cardSize={cardSize}
                             showBleedRing={card.bleedMode === 'COLOR'}
                             source={source}
-                            placeholder={side === 'front' ? 'Crop required' : 'No back'}
+                            placeholder={
+                              side === 'front' && card.frontSrc && !card.frontProcessedSrc
+                                ? 'Crop required'
+                                : undefined
+                            }
                             alt={`Card ${index + 1} ${side} print preview`}
                           />
                         </div>

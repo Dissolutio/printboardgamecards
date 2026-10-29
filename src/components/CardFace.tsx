@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { DEFAULT_BLEED, type Size } from '../lib/geometry.ts'
 import { backgroundFor, hasBackground } from '../lib/piece.ts'
+import { accessibleFaceName, emptyFaceLabel } from '../lib/faceLabel.ts'
 import type { Card, CardSide } from '../types.ts'
 
 type CardFaceProps = {
@@ -10,7 +11,7 @@ type CardFaceProps = {
   showBleedRing: boolean
   aspectIncludesBleed?: boolean
   source?: string
-  placeholder?: string
+  placeholder?: 'Crop required'
   alt?: string
   className?: string
   children?: ReactNode
@@ -30,10 +31,19 @@ export default function CardFace({
 }: CardFaceProps) {
   const imageSource =
     source ?? (side === 'front' ? card.frontProcessedSrc : card.backProcessedSrc)
+  const sourceImage = side === 'front' ? card.frontSrc : card.backSrc
   const backgroundColor = backgroundFor(card, side)
-  const hasImage = Boolean(imageSource)
+  const hasImage = Boolean(imageSource || sourceImage)
+  const hasSideBackground = hasBackground(card, side)
+  const placeholderText =
+    placeholder ??
+    emptyFaceLabel({ side, hasImage, hasBackground: hasSideBackground })
+  const faceName =
+    !placeholder && !imageSource
+      ? accessibleFaceName({ side, hasImage, hasBackground: hasSideBackground })
+      : undefined
   const shouldShowBleedRing =
-    showBleedRing && (hasImage || hasBackground(card, side))
+    showBleedRing && (hasImage || hasSideBackground)
   const includesBleed = aspectIncludesBleed ?? showBleedRing
   const faceWidth = cardSize.width + (includesBleed ? 2 * DEFAULT_BLEED : 0)
   const faceHeight = cardSize.height + (includesBleed ? 2 * DEFAULT_BLEED : 0)
@@ -49,6 +59,8 @@ export default function CardFace({
   return (
     <div
       className={`relative w-full overflow-hidden ${className ?? ''}`}
+      role={faceName ? 'img' : undefined}
+      aria-label={faceName}
       style={{
         aspectRatio: `${faceWidth} / ${faceHeight}`,
         backgroundColor: shouldShowBleedRing ? card.bleedColor : backgroundColor,
@@ -66,11 +78,11 @@ export default function CardFace({
               alt={alt ?? `${side} card`}
               style={{ objectFit: 'fill' }}
             />
-          ) : (
+          ) : placeholderText ? (
             <span className="flex h-full w-full items-center justify-center px-2 text-center text-xs text-base-content/60">
-              {placeholder ?? (side === 'front' ? 'Crop required' : 'No back')}
+              {placeholderText}
             </span>
-          ))}
+          ) : null)}
       </div>
     </div>
   )

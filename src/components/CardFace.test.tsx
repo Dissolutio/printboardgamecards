@@ -59,12 +59,53 @@ describe('CardFace', () => {
         side="back"
         cardSize={{ width: 180, height: 252 }}
         showBleedRing
-        placeholder="No back"
       />,
     )
 
-    expect(markup).toContain('No back')
+    expect(markup).toContain('No back image')
     expect(markup).toContain('background-color:#ffffff')
     expect(markup).not.toContain('#00ff00')
+  })
+
+  it('shows a background without visible text and gives it an accessible name', () => {
+    const colorOnlyCard: Card = {
+      ...card,
+      frontProcessedSrc: undefined,
+      backProcessedSrc: undefined,
+      frontSrc: undefined,
+      backSrc: undefined,
+    }
+    const markup = renderToStaticMarkup(
+      <CardFace
+        card={colorOnlyCard}
+        side="back"
+        cardSize={{ width: 180, height: 252 }}
+        showBleedRing={false}
+      />,
+    )
+
+    expect(markup).toContain('role="img"')
+    expect(markup).toContain('aria-label="Back side: background color, no image."')
+    expect(markup).not.toContain('No back image')
+  })
+
+  it('shows no placeholder text when an image is present', () => {
+    const markup = renderFace('front')
+    expect(markup).not.toContain('No front image')
+    expect(markup).not.toContain('Crop required')
+  })
+
+  it('keeps the crop-required placeholder for an unprocessed source image', () => {
+    const markup = renderToStaticMarkup(
+      <CardFace
+        card={{ ...card, frontProcessedSrc: undefined }}
+        side="front"
+        cardSize={{ width: 180, height: 252 }}
+        showBleedRing={false}
+        placeholder="Crop required"
+      />,
+    )
+
+    expect(markup).toContain('Crop required')
   })
 })
