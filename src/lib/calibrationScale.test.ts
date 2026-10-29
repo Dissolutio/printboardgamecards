@@ -125,7 +125,9 @@ describe('scaleBandY', () => {
           const lastTrimBottomPt =
             grid.originY +
             (grid.rows - 1) * grid.cellH +
-            (gridName === 'regular' ? DEFAULT_BLEED + card.height : grid.cardSize.height)
+            (gridName === 'regular'
+              ? DEFAULT_BLEED + card.height
+              : (grid as ReturnType<typeof calculateTightGrid>).cardSize.height)
           const y = scaleBandY({
             paperHeightPt: paper.height,
             firstTrimTopPt,

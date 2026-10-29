@@ -1,7 +1,19 @@
+import { Fragment } from 'react'
 import { Document, Page, Text, View } from '@react-pdf/renderer'
-import { applyCalibration, DEFAULT_BLEED, type Size } from '../lib/geometry.ts'
+import {
+  applyCalibration,
+  DEFAULT_BLEED,
+  mmToPt,
+  type Size,
+} from '../lib/geometry.ts'
 import type { Grid, Calibration } from '../lib/layout.ts'
 import { calibrationMarks, type CalibrationMark } from '../lib/calibration.ts'
+import {
+  cornerScaleTicks,
+  fullWidthScaleTicks,
+  scaleBandY,
+  type ScaleTick,
+} from '../lib/calibrationScale.ts'
 
 type CalibrationDocProps = {
   paper: Size
@@ -96,6 +108,212 @@ function CalibrationCrosshair({ mark }: { mark: CalibrationMark }) {
   )
 }
 
+function FullWidthScale({
+  paperWidthPt,
+  y,
+  side,
+  calibration,
+}: {
+  paperWidthPt: number
+  y: number
+  side: 'front' | 'back'
+  calibration: Calibration
+}) {
+  const ticks = fullWidthScaleTicks(paperWidthPt)
+  const position = (tick: ScaleTick) => {
+    const xPt = tick.xPt ?? 0
+    return side === 'front'
+      ? { x: xPt, y }
+      : applyCalibration({ x: paperWidthPt - xPt, y }, calibration).back
+  }
+  const first = position(ticks[0])
+  const last = position(ticks[ticks.length - 1])
+
+  return (
+    <>
+      <View
+        style={{
+          position: 'absolute',
+          left: Math.min(first.x, last.x),
+          top: first.y - 0.15,
+          width: Math.abs(last.x - first.x),
+          height: 0.3,
+          backgroundColor: '#000000',
+        }}
+      />
+      {ticks.map((tick) => {
+        const point = position(tick)
+        const length = tick.kind === 'major' ? 8 : tick.kind === 'mid' ? 5 : 3
+
+        return (
+          <View
+            key={`full-tick-${tick.mm}`}
+            style={{
+              position: 'absolute',
+              left: point.x - 0.15,
+              top: point.y - length / 2,
+              width: 0.3,
+              height: length,
+              backgroundColor: '#000000',
+            }}
+          />
+        )
+      })}
+      {side === 'front' &&
+        ticks.map(
+          (tick) =>
+            tick.label !== undefined && (
+              <Text
+                key={`full-label-${tick.mm}`}
+                style={{
+                  position: 'absolute',
+                  left: (tick.xPt ?? 0) - 13,
+                  top: y + 5,
+                  width: 26,
+                  fontSize: 6,
+                  textAlign: 'center',
+                  color: '#000000',
+                }}
+              >
+                {tick.label}
+              </Text>
+            ),
+        )}
+    </>
+  )
+}
+
+function CornerScale({ mark }: { mark: CalibrationMark }) {
+  const ticks = cornerScaleTicks()
+  const halfLength = mmToPt(5)
+  const isLeft = mark.x < 300
+  const isTop = mark.y < 400
+  const outerX = isLeft ? -1 : 1
+  const outerY = isTop ? -1 : 1
+
+  return (
+    <>
+      <View
+        style={{
+          position: 'absolute',
+          left: mark.x - halfLength,
+          top: mark.y - 0.125,
+          width: halfLength * 2,
+          height: 0.25,
+          backgroundColor: '#000000',
+        }}
+      />
+      <View
+        style={{
+          position: 'absolute',
+          left: mark.x - 0.125,
+          top: mark.y - halfLength,
+          width: 0.25,
+          height: halfLength * 2,
+          backgroundColor: '#000000',
+        }}
+      />
+      {ticks.map((tick) => {
+        const offsetPt = tick.offsetPt ?? 0
+        const length =
+          tick.mm === 0 ? 4 : tick.kind === 'mid' ? 2.5 : 1.5
+
+        return (
+          <Fragment key={`corner-tick-${mark.x}-${mark.y}-${tick.mm}`}>
+            <View
+              style={{
+                position: 'absolute',
+                left: mark.x + offsetPt - 0.125,
+                top: mark.y - length / 2,
+                width: 0.25,
+                height: length,
+                backgroundColor: '#000000',
+              }}
+            />
+            <View
+              style={{
+                position: 'absolute',
+                left: mark.x - length / 2,
+                top: mark.y + offsetPt - 0.125,
+                width: length,
+                height: 0.25,
+                backgroundColor: '#000000',
+              }}
+            />
+            {tick.label !== undefined && (
+              <>
+                <Text
+                  style={{
+                    position: 'absolute',
+                    left: mark.x + offsetPt - 3.5,
+                    top:
+                      mark.y +
+                      outerY * (6 + (Math.abs(tick.mm) % 2 === 0 ? 5 : 0)) -
+                      (outerY < 0 ? 5 : 0),
+                    width: 7,
+                    height: 5,
+                    fontSize: 5,
+                    textAlign: 'center',
+                    color: '#000000',
+                  }}
+                >
+                  {tick.label}
+                </Text>
+                <Text
+                  style={{
+                    position: 'absolute',
+                    left:
+                      mark.x +
+                      outerX * (6 + (Math.abs(tick.mm) % 2 === 0 ? 5 : 0)) -
+                      (outerX < 0 ? 7 : 0),
+                    top: mark.y + (tick.offsetPt ?? 0) - 2.5,
+                    width: 7,
+                    height: 5,
+                    fontSize: 5,
+                    textAlign: 'center',
+                    color: '#000000',
+                  }}
+                >
+                  {tick.label}
+                </Text>
+              </>
+            )}
+          </Fragment>
+        )
+      })}
+    </>
+  )
+}
+
+function BackMarkCrosshair({ mark }: { mark: CalibrationMark }) {
+  const arm = mmToPt(6)
+
+  return (
+    <>
+      <View
+        style={{
+          position: 'absolute',
+          left: mark.x - arm,
+          top: mark.y - 0.125,
+          width: arm * 2,
+          height: 0.25,
+          backgroundColor: '#000000',
+        }}
+      />
+      <View
+        style={{
+          position: 'absolute',
+          left: mark.x - 0.125,
+          top: mark.y - arm,
+          width: 0.25,
+          height: arm * 2,
+          backgroundColor: '#000000',
+        }}
+      />
+    </>
+  )
+}
+
 export default function CalibrationDoc({
   paper,
   cardSize,
@@ -103,9 +321,15 @@ export default function CalibrationDoc({
   calibration,
 }: CalibrationDocProps) {
   const marks = calibrationMarks(grid, paper, calibration)
-  const scaleBarWidth = (100 * 72) / 25.4
-  const scaleBarLeft = (paper.width - scaleBarWidth) / 2
-  const scaleBarY = 28
+  const scaleY = scaleBandY({
+    paperHeightPt: paper.height,
+    firstTrimTopPt: grid.originY + DEFAULT_BLEED,
+    lastTrimBottomPt:
+      grid.originY +
+      (grid.rows - 1) * grid.cellH +
+      DEFAULT_BLEED +
+      cardSize.height,
+  })
   const pages = [
     {
       side: 'front' as const,
@@ -144,6 +368,22 @@ export default function CalibrationDoc({
                 }}
               />
             ))}
+            {scaleY !== null && (
+              <FullWidthScale
+                paperWidthPt={paper.width}
+                y={scaleY}
+                side={side}
+                calibration={calibration}
+              />
+            )}
+            {side === 'back' &&
+              pageMarks.map((mark, index) => (
+                <BackMarkCrosshair key={`back-crosshair-${index}`} mark={mark} />
+              ))}
+            {side === 'front' &&
+              pageMarks.map((mark, index) => (
+                <CornerScale key={`corner-scale-${index}`} mark={mark} />
+              ))}
             {pageMarks.map((mark, index) => (
               <CalibrationCrosshair key={`mark-${index}`} mark={mark} />
             ))}
@@ -158,45 +398,6 @@ export default function CalibrationDoc({
             >
               {label}
             </Text>
-            {side === 'front' && (
-              <>
-                <View
-                  style={{
-                    position: 'absolute',
-                    left: scaleBarLeft,
-                    top: scaleBarY,
-                    width: scaleBarWidth,
-                    height: 0.5,
-                    backgroundColor: '#000000',
-                  }}
-                />
-                {Array.from({ length: 11 }, (_, index) => (
-                  <View
-                    key={`tick-${index}`}
-                    style={{
-                      position: 'absolute',
-                      left: scaleBarLeft + (scaleBarWidth * index) / 10 - 0.125,
-                      top: scaleBarY - 3,
-                      width: 0.25,
-                      height: 6,
-                      backgroundColor: '#000000',
-                    }}
-                  />
-                ))}
-                <Text
-                  style={{
-                    position: 'absolute',
-                    left: scaleBarLeft,
-                    top: scaleBarY + 5,
-                    width: scaleBarWidth,
-                    fontSize: 6,
-                    color: '#000000',
-                  }}
-                >
-                  100 mm - measure this to check printer scaling
-                </Text>
-              </>
-            )}
           </View>
         </Page>
       ))}
