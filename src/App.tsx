@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ChangeEvent } from 'react'
 import { pdf } from '@react-pdf/renderer'
 import CardEditor from './components/CardEditor.tsx'
 import CardFace from './components/CardFace.tsx'
@@ -35,6 +35,13 @@ import {
 } from './lib/calibration.ts'
 import { hasBackground } from './lib/piece.ts'
 import { loadImageSize, renderCrop } from './lib/renderCrop.ts'
+import { parseProject, serializeProject } from './lib/project.ts'
+import {
+  convertProjectDataSourcesToBlobUrls,
+  needsProjectReplacementConfirmation,
+  PROJECT_FILENAME,
+  validateProjectSettings,
+} from './lib/projectIo.ts'
 import {
   layoutDuplexPages,
   layoutPrintAndGlue,
@@ -165,7 +172,7 @@ async function prepareSideCrop(
 
 async function blobUrlToDataUrl(url: string): Promise<string> {
   const response = await fetch(url)
-  if (!response.ok) throw new Error('Could not read the cropped image for PDF export.')
+  if (!response.ok) throw new Error('Could not read image data.')
 
   const blob = await response.blob()
   return new Promise((resolve, reject) => {
@@ -174,17 +181,23 @@ async function blobUrlToDataUrl(url: string): Promise<string> {
       if (typeof reader.result === 'string') {
         resolve(reader.result)
       } else {
-        reject(new Error('Could not convert the cropped image for PDF export.'))
+        reject(new Error('Could not convert image data.'))
       }
     }
     reader.onerror = () => {
-      reject(reader.error ?? new Error('Could not convert the cropped image for PDF export.'))
+      reject(reader.error ?? new Error('Could not convert image data.'))
     }
     reader.readAsDataURL(blob)
   })
 }
 
-function downloadPdfBlob(blob: Blob, filename: string) {
+async function dataUrlToBlobUrl(url: string): Promise<string> {
+  const response = await fetch(url)
+  if (!response.ok) throw new Error('Could not read an image from the project file.')
+  return URL.createObjectURL(await response.blob())
+}
+
+function downloadBlob(blob: Blob, filename: string) {
   const downloadUrl = URL.createObjectURL(blob)
 
   try {
@@ -205,10 +218,14 @@ function App() {
   const cardOperationTokens = useRef(new Map<string, number>())
   const presetGeneration = useRef(0)
   const presetInProgress = useRef(false)
+  const projectOperationInProgress = useRef(false)
   const appliedPreset = useRef<PresetName>('POKER')
+  const projectFileInput = useRef<HTMLInputElement>(null)
   const [selectedId, setSelectedId] = useState('card-1')
   const [presetName, setPresetName] = useState<PresetName>('POKER')
   const [isChangingPreset, setIsChangingPreset] = useState(false)
+  const [isSavingProject, setIsSavingProject] = useState(false)
+  const [isLoadingProject, setIsLoadingProject] = useState(false)
   const [paperName, setPaperName] = useState<PaperName>('LETTER')
   const [exportMode, setExportMode] = useState<ExportMode>('PRINT_GLUE')
   const [pieceOrientation, setPieceOrientation] = useState<PieceOrientation>('AUTO')
@@ -240,6 +257,8 @@ function App() {
     offsetY: mmToPt(calibration.offsetYmm),
   }
   const selectedCard = cards.find((card) => card.id === selectedId)
+  const isProjectControlsDisabled =
+    isChangingPreset || isSavingProject || isLoadingProject || isExporting
   const pageCount =
     exportMode === 'PRINT_GLUE'
       ? layoutPrintAndGlue(cards, tightGrid).length
@@ -512,7 +531,14 @@ function App() {
   }
 
   async function handlePresetChange(nextPreset: PresetName) {
-    if (nextPreset === presetName || presetInProgress.current) return
+    if (
+      nextPreset === presetName ||
+      presetInProgress.current ||
+      projectOperationInProgress.current ||
+      isExporting
+    ) {
+      return
+    }
 
     const generation = ++presetGeneration.current
     presetInProgress.current = true
@@ -668,7 +694,184 @@ function App() {
     })()
   }
 
+  async function handleSaveProject() {
+    if (
+      projectOperationInProgress.current ||
+      presetInProgress.current ||
+      isExporting
+    ) {
+      return
+    }
+
+    projectOperationInProgress.current = true
+    setIsSavingProject(true)
+    setExportError(undefined)
+    try {
+      const currentCards = cardsRef.current
+      const projectCards = await Promise.all(
+        currentCards.map(async (card) => ({
+          ...card,
+          frontSrc: card.frontSrc?.startsWith('blob:')
+            ? await blobUrlToDataUrl(card.frontSrc)
+            : card.frontSrc,
+          backSrc: card.backSrc?.startsWith('blob:')
+            ? await blobUrlToDataUrl(card.backSrc)
+            : card.backSrc,
+          frontProcessedSrc: undefined,
+          backProcessedSrc: undefined,
+        })),
+      )
+      const projectSettings = {
+        presetName,
+        paperName,
+        exportMode,
+        pieceOrientation,
+      }
+      const projectBlob = new Blob(
+        [serializeProject(projectSettings, projectCards)],
+        { type: 'application/json' },
+      )
+      downloadBlob(projectBlob, PROJECT_FILENAME)
+    } catch (error) {
+      setExportError(
+        error instanceof Error
+          ? error.message
+          : 'Could not save the project. Please try again.',
+      )
+    } finally {
+      projectOperationInProgress.current = false
+      setIsSavingProject(false)
+    }
+  }
+
+  async function handleLoadProject(event: ChangeEvent<HTMLInputElement>) {
+    const input = event.currentTarget
+    const file = input.files?.[0]
+    if (!file) {
+      input.value = ''
+      return
+    }
+    if (projectOperationInProgress.current || presetInProgress.current || isExporting) {
+      setExportError('Finish the current operation before loading a project.')
+      input.value = ''
+      return
+    }
+
+    projectOperationInProgress.current = true
+    setIsLoadingProject(true)
+    setExportError(undefined)
+    const generatedUrls: string[] = []
+    let generation: number | undefined
+    let ownsPresetLock = false
+    try {
+      const parsed = parseProject(await file.text())
+      if (!parsed.ok) {
+        setExportError(parsed.error)
+        return
+      }
+
+      const validatedSettings = validateProjectSettings(
+        parsed.project.settings,
+        isPresetName,
+      )
+      if (!validatedSettings.ok) {
+        setExportError(validatedSettings.error)
+        return
+      }
+      const nextSettings = validatedSettings.settings
+      if (
+        needsProjectReplacementConfirmation(cardsRef.current, {
+          presetName,
+          paperName,
+          exportMode,
+          pieceOrientation,
+        }) &&
+        !window.confirm('Replace the current deck?')
+      ) {
+        return
+      }
+
+      generation = ++presetGeneration.current
+      presetInProgress.current = true
+      ownsPresetLock = true
+      setIsChangingPreset(true)
+      const originalCards = cardsRef.current
+      const nextSize = CARD_PRESETS[nextSettings.presetName]
+      for (const card of originalCards) beginCardOperation(card.id)
+
+      const convertedCards = await convertProjectDataSourcesToBlobUrls(
+        parsed.cards,
+        dataUrlToBlobUrl,
+        (url) => generatedUrls.push(url),
+      )
+      const nextCards: Card[] = []
+      for (const card of convertedCards) {
+        let nextCard = card
+        for (const side of SIDES) {
+          if (!sideSource(card, side) || !sideCrop(card, side)) continue
+          const result = await prepareSideCrop(
+            card,
+            side,
+            nextSize,
+            card.bleedMode,
+            true,
+          )
+          const processedSource = result
+            ? URL.createObjectURL(result.blob)
+            : undefined
+          if (processedSource) generatedUrls.push(processedSource)
+          nextCard = withSideCrop(
+            nextCard,
+            side,
+            result?.crop,
+            processedSource,
+          )
+        }
+        nextCards.push(nextCard)
+      }
+
+      if (
+        generation !== presetGeneration.current ||
+        cardsRef.current !== originalCards
+      ) {
+        generatedUrls.forEach(URL.revokeObjectURL)
+        if (cardsRef.current !== originalCards) {
+          setExportError('The deck changed while loading the project. Please try again.')
+        }
+        return
+      }
+
+      const cardsToApply = nextCards.length > 0 ? nextCards : [createCard(crypto.randomUUID())]
+      for (const card of originalCards) beginCardOperation(card.id)
+      setPresetName(nextSettings.presetName)
+      setPaperName(nextSettings.paperName)
+      setExportMode(nextSettings.exportMode)
+      setPieceOrientation(nextSettings.pieceOrientation)
+      appliedPreset.current = nextSettings.presetName
+      replaceCards(cardsToApply)
+      setSelectedId(cardsToApply[0].id)
+      setErrors({ front: undefined, back: undefined })
+      revokeUnusedUrls(originalCards.flatMap(objectUrls), cardsToApply)
+    } catch (error) {
+      generatedUrls.forEach(URL.revokeObjectURL)
+      setExportError(
+        error instanceof Error
+          ? `Could not load the project: ${error.message}`
+          : 'Could not load the project. Please try again.',
+      )
+    } finally {
+      if (ownsPresetLock && generation === presetGeneration.current) {
+        presetInProgress.current = false
+        setIsChangingPreset(false)
+      }
+      projectOperationInProgress.current = false
+      setIsLoadingProject(false)
+      input.value = ''
+    }
+  }
+
   async function handleDownload() {
+    if (presetInProgress.current || projectOperationInProgress.current) return
     if (pageCount === 0) {
       setExportError('Upload and crop a front image before exporting.')
       return
@@ -709,7 +912,7 @@ function App() {
           />
         )
       const pdfBlob = await pdf(pdfDocument).toBlob()
-      downloadPdfBlob(pdfBlob, `printboard-cards-${paperName.toLowerCase()}.pdf`)
+      downloadBlob(pdfBlob, `printboard-cards-${paperName.toLowerCase()}.pdf`)
     } catch (error) {
       setExportError(
         error instanceof Error ? error.message : 'PDF export failed. Please try again.',
@@ -720,6 +923,7 @@ function App() {
   }
 
   async function handleDownloadCalibrationSheet() {
+    if (presetInProgress.current || projectOperationInProgress.current) return
     setIsExporting(true)
     setExportError(undefined)
 
@@ -732,7 +936,7 @@ function App() {
           calibration={calibrationPt}
         />,
       ).toBlob()
-      downloadPdfBlob(
+      downloadBlob(
         pdfBlob,
         `printboard-calibration-${paperName.toLowerCase()}.pdf`,
       )
@@ -769,7 +973,7 @@ function App() {
               <select
                 className="select select-bordered w-full"
                 value={presetName}
-                disabled={isChangingPreset}
+                disabled={isProjectControlsDisabled}
                 onChange={(event) => {
                   const value = event.currentTarget.value
                   if (isPresetName(value)) handlePresetChange(value)
@@ -787,6 +991,7 @@ function App() {
               <select
                 className="select select-bordered w-full"
                 value={paperName}
+                disabled={isLoadingProject}
                 onChange={(event) => {
                   const selectedPaper = PAPER_OPTIONS.find(
                     (option) => option === event.currentTarget.value,
@@ -806,6 +1011,7 @@ function App() {
               <select
                 className="select select-bordered w-full"
                 value={exportMode}
+                disabled={isLoadingProject}
                 onChange={(event) =>
                   setExportMode(
                     event.currentTarget.value === 'DUPLEX' ? 'DUPLEX' : 'PRINT_GLUE',
@@ -822,6 +1028,7 @@ function App() {
                 <select
                   className="select select-bordered w-full"
                   value={pieceOrientation}
+                  disabled={isLoadingProject}
                   onChange={(event) =>
                     setPieceOrientation(
                       event.currentTarget.value === 'UPRIGHT' ||
@@ -905,7 +1112,7 @@ function App() {
               <button
                 className="btn btn-primary"
                 type="button"
-                disabled={isExporting}
+                disabled={isProjectControlsDisabled}
                 onClick={handleDownloadCalibrationSheet}
               >
                 {isExporting ? 'Preparing calibration sheet…' : 'Download calibration sheet'}
@@ -1056,11 +1263,35 @@ function App() {
             <button
               className="btn btn-primary"
               type="button"
-              disabled={pageCount === 0 || isExporting}
+              disabled={pageCount === 0 || isProjectControlsDisabled}
               onClick={handleDownload}
             >
               {isExporting ? 'Preparing PDF…' : 'Download PDF'}
             </button>
+            <button
+              className="btn btn-outline"
+              type="button"
+              disabled={isProjectControlsDisabled}
+              onClick={handleSaveProject}
+            >
+              {isSavingProject ? 'Saving…' : 'Save project'}
+            </button>
+            <button
+              className="btn btn-outline"
+              type="button"
+              disabled={isProjectControlsDisabled}
+              onClick={() => projectFileInput.current?.click()}
+            >
+              {isLoadingProject ? 'Loading...' : 'Load project'}
+            </button>
+            <input
+              ref={projectFileInput}
+              className="hidden"
+              type="file"
+              accept=".json,application/json"
+              disabled={isProjectControlsDisabled}
+              onChange={handleLoadProject}
+            />
           </div>
           <p className="max-w-2xl text-sm font-medium text-warning">
             {exportMode === 'DUPLEX'
