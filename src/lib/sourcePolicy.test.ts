@@ -22,6 +22,11 @@ describe('findDisallowedSources', () => {
         backSrc: 'data:image/svg+xml;charset=utf-8,%3Csvg/%3E',
       }),
       createCard({
+        id: 'card-3',
+        frontSrc: 'data:image/bmp;base64,abc',
+        backSrc: 'data:image/avif;base64,abc',
+      }),
+      createCard({
         id: 'card-2',
         frontSrc: '/app/decks/classic/AS.svg',
         backSrc: '/app/decks/card-back.svg',
@@ -31,7 +36,7 @@ describe('findDisallowedSources', () => {
 
   it.each([
     ['external address', 'https://tracker.example/pixel.png'],
-    ['unsupported data source', 'data:image/bmp;base64,abc'],
+    ['unsupported data source', 'data:text/html;base64,abc'],
     ['blob source', 'blob:https://example.com/image'],
     ['path outside the prefix', '/app/assets/card.svg'],
   ])('rejects a %s and names its card position', (_name, source) => {
