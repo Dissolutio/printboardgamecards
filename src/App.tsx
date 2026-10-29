@@ -46,6 +46,7 @@ import {
 } from './lib/printerProfiles.ts'
 import { hasBackground } from './lib/piece.ts'
 import { parseMeasurement } from './lib/calibrationInput.ts'
+import { getImageType } from './lib/imageType.ts'
 import { loadImageSize, renderCrop } from './lib/renderCrop.ts'
 import { parseProject, serializeProject } from './lib/project.ts'
 import { findDisallowedSources } from './lib/sourcePolicy.ts'
@@ -361,6 +362,7 @@ function App() {
 
   function resetCalibration() {
     persistActiveCalibration(ZERO_CALIBRATION_MM)
+    setCalibrationUpdated(false)
   }
 
   function applyObservedCorrection() {
@@ -397,6 +399,7 @@ function App() {
       nextProfiles.profiles[0]
     persistPrinterProfiles(nextProfiles)
     syncCalibrationDraft(nextProfile)
+    setCalibrationUpdated(false)
   }
 
   function handleAddPrinter() {
@@ -406,6 +409,7 @@ function App() {
     if (nextProfiles === printerProfiles) return
     persistPrinterProfiles(nextProfiles)
     syncCalibrationDraft(nextProfiles.profiles[nextProfiles.profiles.length - 1])
+    setCalibrationUpdated(false)
   }
 
   function handleRenamePrinter() {
@@ -429,6 +433,7 @@ function App() {
       nextProfiles.profiles[0]
     persistPrinterProfiles(nextProfiles)
     syncCalibrationDraft(nextProfile)
+    setCalibrationUpdated(false)
   }
 
   function beginCardOperation(cardId: string): number {
@@ -479,7 +484,12 @@ function App() {
     const cropKey = side === 'front' ? 'frontCrop' : 'backCrop'
     const operationToken = beginCardOperation(currentCard.id)
     const presetForOperation = appliedPreset.current
-    const nextSourceUrl = URL.createObjectURL(file)
+    const type = getImageType(file)
+    const sourceFile =
+      (!file.type || file.type.toLowerCase() === 'application/octet-stream') && type
+        ? new Blob([file], { type })
+        : file
+    const nextSourceUrl = URL.createObjectURL(sourceFile)
     setErrors((current) => ({ ...current, [side]: undefined }))
 
     void (async () => {
@@ -1241,6 +1251,10 @@ function App() {
                 </button>
               </li>
               <li className="space-y-1">
+                <p>Print at Actual Size. Do not use Fit to Page.</p>
+                <p>Flip the paper on the long edge to print the back.</p>
+                <p>Place the back arrow at the top of the page.</p>
+                <p>Hold the sheet up to a light. Look from the front side.</p>
                 <p>
                   Print it double-sided and measure the distance from each front mark to its back
                   mark at two opposite corners.
@@ -1349,6 +1363,7 @@ function App() {
                         ...current,
                         offsetXmm: value,
                       }))
+                      setCalibrationUpdated(false)
                     }}
                     onBlur={() => commitCalibrationAxis('offsetXmm')}
                     onKeyDown={(event) => {
@@ -1371,6 +1386,7 @@ function App() {
                         ...current,
                         offsetYmm: value,
                       }))
+                      setCalibrationUpdated(false)
                     }}
                     onBlur={() => commitCalibrationAxis('offsetYmm')}
                     onKeyDown={(event) => {
@@ -1434,7 +1450,11 @@ function App() {
                     onStep={(direction) => handleQuantityStep(card.id, direction)}
                   />
                 </div>
-                  {card.frontSrc && (!card.frontProcessedSrc || !card.frontCrop) && (
+                  {!card.frontSrc ? (
+                    <p className="mt-2 text-sm text-warning">
+                      This card has no front image. It will be skipped during export.
+                    </p>
+                  ) : (!card.frontProcessedSrc || !card.frontCrop) && (
                     <p className="mt-2 text-sm text-warning">
                       Front crop required; this card will be skipped during export.
                     </p>

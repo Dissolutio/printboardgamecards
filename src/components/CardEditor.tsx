@@ -336,7 +336,7 @@ function SideCrop({
             ref={imageInputRef}
             className="file-input file-input-bordered w-full"
             type="file"
-            accept="image/*"
+            accept=".png,.jpg,.jpeg,.webp,.gif,.bmp,.avif,.svg,image/*"
             onChange={(event) => {
               const file = event.currentTarget.files?.[0]
               if (file) onImageSelect(side, file)
