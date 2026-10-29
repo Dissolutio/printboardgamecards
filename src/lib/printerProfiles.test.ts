@@ -84,6 +84,33 @@ describe('printer profile storage', () => {
     })
   })
 
+  it('repairs duplicate ids deterministically and keeps the first active match', () => {
+    stubStorage({
+      [PRINTER_PROFILES_STORAGE_KEY]: JSON.stringify({
+        version: 1,
+        activeId: 'office',
+        profiles: [
+          { id: 'office', name: 'First office', offsetXmm: 1, offsetYmm: 2 },
+          { id: 'office', name: 'Second office', offsetXmm: 3, offsetYmm: 4 },
+          { id: 'office-duplicate', name: 'Existing id', offsetXmm: 5, offsetYmm: 6 },
+          { id: 'office', name: 'Third office', offsetXmm: 7, offsetYmm: 8 },
+          { id: 'office', name: 'Fourth office', offsetXmm: 9, offsetYmm: 10 },
+        ],
+      }),
+    })
+
+    expect(loadPrinterProfiles()).toEqual({
+      profiles: [
+        { id: 'office', name: 'First office', offsetXmm: 1, offsetYmm: 2 },
+        { id: 'office-duplicate-2', name: 'Second office', offsetXmm: 3, offsetYmm: 4 },
+        { id: 'office-duplicate', name: 'Existing id', offsetXmm: 5, offsetYmm: 6 },
+        { id: 'office-duplicate-3', name: 'Third office', offsetXmm: 7, offsetYmm: 8 },
+        { id: 'office-duplicate-4', name: 'Fourth office', offsetXmm: 9, offsetYmm: 10 },
+      ],
+      activeId: 'office',
+    })
+  })
+
   it('migrates valid legacy offsets without changing the legacy key', () => {
     const storage = stubStorage({
       [CALIBRATION_STORAGE_KEY]: JSON.stringify({ offsetXmm: 4, offsetYmm: -3 }),
@@ -182,9 +209,19 @@ describe('printer profile helpers', () => {
 
 describe('profile names and filenames', () => {
   it('sanitizes empty, whitespace, and long profile names', () => {
+    expect(sanitizeProfileName('')).toBe('My printer')
     expect(sanitizeProfileName('   ')).toBe('My printer')
     expect(sanitizeProfileName('  My   office printer  ')).toBe('My office printer')
     expect(sanitizeProfileName('x'.repeat(50))).toBe('x'.repeat(40))
+  })
+
+  it('uses the sanitized fallback for empty profile names', () => {
+    const profiles = { profiles: [defaultProfile], activeId: defaultProfile.id }
+    const added = addProfile(profiles, '   ')
+    const renamed = renameProfile(profiles, defaultProfile.id, '')
+
+    expect(added.profiles[1].name).toBe('My printer')
+    expect(renamed.profiles[0].name).toBe('My printer')
   })
 
   it('creates bounded lowercase slugs and uses a fallback for symbols', () => {
