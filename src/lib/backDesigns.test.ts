@@ -27,6 +27,80 @@ function parseSvg(svg: string) {
   return root
 }
 
+function getChildren(root: Element): Element[] {
+  const elements: Element[] = []
+  for (let node = root.firstChild; node; node = node.nextSibling) {
+    if (node.nodeType === 1) elements.push(node as Element)
+  }
+  return elements
+}
+
+function getBounds(element: Element) {
+  const number = (attribute: string, fallback = 0) => {
+    const value = element.getAttribute(attribute)
+    return value ? Number(value) : fallback
+  }
+  const stroke = number('stroke-width') / 2
+  switch (element.tagName) {
+    case 'rect': {
+      const x = number('x')
+      const y = number('y')
+      return {
+        left: x - stroke,
+        top: y - stroke,
+        right: x + number('width') + stroke,
+        bottom: y + number('height') + stroke,
+      }
+    }
+    case 'circle': {
+      const radius = number('r')
+      return {
+        left: number('cx') - radius - stroke,
+        top: number('cy') - radius - stroke,
+        right: number('cx') + radius + stroke,
+        bottom: number('cy') + radius + stroke,
+      }
+    }
+    case 'polygon': {
+      const points = (element.getAttribute('points') ?? '')
+        .split(/[ ,]+/)
+        .filter(Boolean)
+        .map(Number)
+      const xs = points.filter((_, index) => index % 2 === 0)
+      const ys = points.filter((_, index) => index % 2 === 1)
+      return {
+        left: Math.min(...xs) - stroke,
+        top: Math.min(...ys) - stroke,
+        right: Math.max(...xs) + stroke,
+        bottom: Math.max(...ys) + stroke,
+      }
+    }
+    case 'path': {
+      const coordinates = (element.getAttribute('d') ?? '').match(/-?\d+(?:\.\d+)?/g)?.map(Number) ?? []
+      const xs = coordinates.filter((_, index) => index % 2 === 0)
+      const ys = coordinates.filter((_, index) => index % 2 === 1)
+      return {
+        left: Math.min(...xs) - stroke,
+        top: Math.min(...ys) - stroke,
+        right: Math.max(...xs) + stroke,
+        bottom: Math.max(...ys) + stroke,
+      }
+    }
+    default:
+      throw new Error(`Unexpected pattern element: ${element.tagName}`)
+  }
+}
+
+function combinedBounds(elements: Element[]) {
+  const bounds = elements.map(getBounds)
+  return {
+    left: Math.min(...bounds.map((box) => box.left)),
+    top: Math.min(...bounds.map((box) => box.top)),
+    right: Math.max(...bounds.map((box) => box.right)),
+    bottom: Math.max(...bounds.map((box) => box.bottom)),
+  }
+}
+
 describe('generateBackSvg', () => {
   it.each(BACK_DESIGNS.flatMap((design) =>
     BACK_PALETTES.flatMap((palette) =>
@@ -146,5 +220,69 @@ describe('generateBackSvg', () => {
     expect(backSvgToDataUrl(svg)).toBe(
       `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`,
     )
+  })
+
+  it.each(BACK_DESIGNS.flatMap((design) =>
+    sizes.flatMap((size) =>
+      [false, true].map((border) => ({ design, size, border })),
+    ),
+  ))(
+    'centers whole pattern cells for $design.id at $size.name with border=$border',
+    ({ design, size, border }) => {
+      const svg = generateBackSvg({
+        design: design.id,
+        width: size.width,
+        height: size.height,
+        primary: '#17243a',
+        secondary: '#d8b15a',
+        border,
+      })
+      const root = parseSvg(svg)
+      const children = getChildren(root)
+      const patternElements = children.slice(1, border ? -1 : undefined)
+
+      expect(svg).not.toMatch(/-?\d+\.\d{4,}/)
+      if (design.id === 'SOLID') {
+        expect(patternElements).toHaveLength(0)
+        return
+      }
+
+      const bounds = combinedBounds(patternElements)
+      expect(Math.abs(bounds.left - (size.width - bounds.right))).toBeLessThanOrEqual(0.01)
+      expect(Math.abs(bounds.top - (size.height - bounds.bottom))).toBeLessThanOrEqual(0.01)
+
+      if (border) {
+        const borderElement = children.at(-1)
+        if (!borderElement) throw new Error('SVG has no border element.')
+        const borderBounds = getBounds(borderElement)
+        const gap = Math.min(size.width, size.height) * 0.01
+        expect(bounds.left).toBeGreaterThanOrEqual(borderBounds.left + gap - 0.01)
+        expect(bounds.top).toBeGreaterThanOrEqual(borderBounds.top + gap - 0.01)
+        expect(bounds.right).toBeLessThanOrEqual(borderBounds.right - gap + 0.01)
+        expect(bounds.bottom).toBeLessThanOrEqual(borderBounds.bottom - gap + 0.01)
+      }
+    },
+  )
+
+  it.each(sizes)('uses equal whole CROSSHATCH cells at $name size', (size) => {
+    const svg = generateBackSvg({
+      design: 'CROSSHATCH',
+      width: size.width,
+      height: size.height,
+      primary: '#17243a',
+      secondary: '#d8b15a',
+    })
+    const paths = getChildren(parseSvg(svg)).filter((element) => element.tagName === 'path')
+    const dimensions = paths.map((path) => {
+      const coordinates = path
+        .getAttribute('d')!
+        .match(/-?\d+(?:\.\d+)?/g)!
+        .map(Number)
+      const xs = coordinates.filter((_, index) => index % 2 === 0)
+      const ys = coordinates.filter((_, index) => index % 2 === 1)
+      return `${(Math.max(...xs) - Math.min(...xs)).toFixed(3)}x${(Math.max(...ys) - Math.min(...ys)).toFixed(3)}`
+    })
+
+    expect(new Set(dimensions).size).toBe(1)
   })
 })

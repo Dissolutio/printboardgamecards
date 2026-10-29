@@ -29,6 +29,8 @@ export function validateEntryPath(path: string): string | undefined {
   if (path.endsWith('/')) return 'Path must not end with /'
 
   const segments = path.split('/')
+  if (segments.includes('')) return 'Path must not contain empty segments'
+  if (segments.includes('.')) return 'Path must not contain . segments'
   if (segments.includes('..')) return 'Path must not contain .. segments'
   if (segments.some((segment) => segment.length > 100)) {
     return 'Path segments must not exceed 100 characters'
@@ -103,7 +105,9 @@ export function buildBundle(
   }
 
   for (const entry of orderedEntries) {
-    const extension = entry.path.slice(entry.path.lastIndexOf('.')).toLowerCase()
+    const fileName = entry.path.split('/').at(-1) ?? ''
+    const dotIndex = fileName.lastIndexOf('.')
+    const extension = dotIndex < 0 ? '' : fileName.slice(dotIndex).toLowerCase()
     const level = STORED_EXTENSIONS.has(extension)
       ? 0
       : overrideLevel ?? (TEXT_EXTENSIONS.has(extension) ? 6 : undefined)
