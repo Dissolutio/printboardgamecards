@@ -17,6 +17,8 @@ export type Card = {
   bleedMode: BleedMode
   frontSrc?: string
   backSrc?: string
+  frontIsVector?: boolean
+  backIsVector?: boolean
   frontProcessedSrc?: string
   backProcessedSrc?: string
   frontCrop?: PixelCropRect

@@ -4,7 +4,8 @@ import Cropper, { type Area, type MediaSize, type Point } from 'react-easy-crop'
 import CardFace from './CardFace.tsx'
 import type { Size } from '../lib/geometry.ts'
 import { DEFAULT_BLEED } from '../lib/geometry.ts'
-import { cropAreaSize, effectiveDpi, isLowRes } from '../lib/crop.ts'
+import { cropAreaSize, isLowRes } from '../lib/crop.ts'
+import { effectiveDpiForSource } from '../lib/vectorSource.ts'
 import { backgroundFor, withBackgroundEnabled } from '../lib/piece.ts'
 import { centeredMaximumCrop } from '../lib/cropConvert.ts'
 import { renderCrop } from '../lib/renderCrop.ts'
@@ -41,6 +42,7 @@ type SideCropProps = {
   card: Card
   side: CardSide
   source: string
+  isVector: boolean
   processedSource?: string
   crop?: PixelCropRect
   cardSize: Size
@@ -67,6 +69,7 @@ function SideCrop({
   card,
   side,
   source,
+  isVector,
   processedSource,
   crop,
   cardSize,
@@ -279,7 +282,13 @@ function SideCrop({
     commitCrop(nextCrop)
   }
 
-  const dpi = crop ? effectiveDpi(crop.width, areaWidth) : undefined
+  const dpi = crop
+    ? effectiveDpiForSource({
+        cropPixelWidth: crop.width,
+        areaWidthPt: areaWidth,
+        isVector,
+      })
+    : undefined
   const bleedInsetX = frameSize ? (bleed / areaWidth) * frameSize.width : 0
   const bleedInsetY = frameSize ? (bleed / areaHeight) * frameSize.height : 0
   const ringWidth = frameSize ? (bleed / cardSize.width) * frameSize.width : 0
@@ -288,7 +297,9 @@ function SideCrop({
     <section className="rounded-box border border-base-300 bg-base-100 p-4">
       <div className="mb-3 flex items-center justify-between gap-3">
         <h3 className="text-lg font-semibold capitalize">{side}</h3>
-        {dpi !== undefined && (
+        {isVector && source ? (
+          <span className="badge badge-neutral">Vector</span>
+        ) : dpi !== undefined && (
           <span className={`badge ${isLowRes(dpi) ? 'badge-warning' : 'badge-success'}`}>
             {dpi.toFixed(0)} DPI
           </span>
@@ -678,6 +689,7 @@ export default function CardEditor({
       <div className="space-y-6">
         {(['front', 'back'] as const).map((side) => {
           const source = side === 'front' ? card.frontSrc : card.backSrc
+          const isVector = side === 'front' ? card.frontIsVector : card.backIsVector
           const processedSource =
             side === 'front' ? card.frontProcessedSrc : card.backProcessedSrc
           const crop = side === 'front' ? card.frontCrop : card.backCrop
@@ -690,6 +702,7 @@ export default function CardEditor({
               card={card}
               side={side}
               source={source ?? ''}
+              isVector={isVector ?? false}
               processedSource={processedSource}
               crop={crop}
               cardSize={cardSize}

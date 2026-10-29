@@ -66,6 +66,32 @@ describe('project save/load', () => {
     expect(text).not.toContain('ProcessedSrc')
   })
 
+  it('round trips vector flags and accepts older projects without them', () => {
+    const vectorCard = {
+      ...createCard(),
+      frontIsVector: true,
+      backIsVector: false,
+    }
+    const parsedVectorCard = parseProject(serializeProject(settings, [vectorCard]))
+    expect(parsedVectorCard.ok && parsedVectorCard.cards[0]).toMatchObject({
+      frontIsVector: true,
+      backIsVector: false,
+    })
+
+    const oldProject = JSON.parse(serializeProject(settings, [createCard()])) as {
+      cards: Record<string, unknown>[]
+    }
+    delete oldProject.cards[0].frontIsVector
+    delete oldProject.cards[0].backIsVector
+    const parsedOldProject = parseProject(JSON.stringify(oldProject))
+
+    expect(parsedOldProject.ok).toBe(true)
+    if (parsedOldProject.ok) {
+      expect(parsedOldProject.cards[0]).not.toHaveProperty('frontIsVector')
+      expect(parsedOldProject.cards[0]).not.toHaveProperty('backIsVector')
+    }
+  })
+
   it('round trips an empty deck', () => {
     const parsed = parseProject(serializeProject(settings, []))
 
@@ -137,6 +163,8 @@ describe('project save/load', () => {
     ['invalid bleed mode', { bleedMode: 'OTHER' }, '.bleedMode'],
     ['invalid front background', { frontBackground: { enabled: 'yes', color: '#fff' } }, '.frontBackground'],
     ['invalid back background', { backBackground: { enabled: true, color: 'red' } }, '.backBackground'],
+    ['invalid front vector flag', { frontIsVector: 'yes' }, '.frontIsVector'],
+    ['invalid back vector flag', { backIsVector: 1 }, '.backIsVector'],
     ['invalid bleed color', { bleedColor: '#abcd' }, '.bleedColor'],
     ['invalid crop coordinate', { frontCrop: { x: Infinity, y: 0, width: 1, height: 1 } }, '.frontCrop'],
     ['non-positive crop width', { frontCrop: { x: 0, y: 0, width: 0, height: 1 } }, '.frontCrop'],

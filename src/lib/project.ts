@@ -126,6 +126,12 @@ function cardError(value: unknown, index: number): string | undefined {
   if (value.backSrc !== undefined && typeof value.backSrc !== 'string') {
     return `${prefix}.backSrc: expected a string.`
   }
+  if (value.frontIsVector !== undefined && typeof value.frontIsVector !== 'boolean') {
+    return `${prefix}.frontIsVector: expected a boolean.`
+  }
+  if (value.backIsVector !== undefined && typeof value.backIsVector !== 'boolean') {
+    return `${prefix}.backIsVector: expected a boolean.`
+  }
   if (value.frontCrop !== undefined && !isCrop(value.frontCrop)) {
     return `${prefix}.frontCrop: expected finite crop values and positive width and height.`
   }
@@ -144,6 +150,8 @@ function saveCard(card: Card): SavedCard {
     bleedMode: card.bleedMode,
     ...(card.frontSrc !== undefined && { frontSrc: card.frontSrc }),
     ...(card.backSrc !== undefined && { backSrc: card.backSrc }),
+    ...(card.frontIsVector !== undefined && { frontIsVector: card.frontIsVector }),
+    ...(card.backIsVector !== undefined && { backIsVector: card.backIsVector }),
     ...(card.frontCrop !== undefined && { frontCrop: copyCrop(card.frontCrop) }),
     ...(card.backCrop !== undefined && { backCrop: copyCrop(card.backCrop) }),
     frontBackground: copyBackground(card.frontBackground),
@@ -210,6 +218,8 @@ export function parseProject(text: string): ParseProjectResult {
       bleedMode: card.bleedMode,
       ...(card.frontSrc !== undefined && { frontSrc: card.frontSrc }),
       ...(card.backSrc !== undefined && { backSrc: card.backSrc }),
+      ...(card.frontIsVector !== undefined && { frontIsVector: card.frontIsVector }),
+      ...(card.backIsVector !== undefined && { backIsVector: card.backIsVector }),
       ...(card.frontCrop !== undefined && { frontCrop: copyCrop(card.frontCrop) }),
       ...(card.backCrop !== undefined && { backCrop: copyCrop(card.backCrop) }),
       frontBackground: copyBackground(card.frontBackground),

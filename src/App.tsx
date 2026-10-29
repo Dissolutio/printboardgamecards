@@ -47,6 +47,8 @@ import {
 import { hasBackground } from './lib/piece.ts'
 import { loadImageSize, renderCrop } from './lib/renderCrop.ts'
 import { parseProject, serializeProject } from './lib/project.ts'
+import { findDisallowedSources } from './lib/sourcePolicy.ts'
+import { isSvgFile, isSvgUrl } from './lib/vectorSource.ts'
 import {
   convertProjectDataSourcesToBlobUrls,
   needsProjectReplacementConfirmation,
@@ -293,7 +295,7 @@ function App() {
   function revokeUnusedUrls(candidates: string[], remainingCards: Card[]) {
     const retained = new Set(remainingCards.flatMap(objectUrls))
     for (const url of new Set(candidates)) {
-      if (!retained.has(url)) URL.revokeObjectURL(url)
+      if (url.startsWith('blob:') && !retained.has(url)) URL.revokeObjectURL(url)
     }
   }
 
@@ -465,6 +467,7 @@ function App() {
     if (!currentCard) return
 
     const sourceKey = side === 'front' ? 'frontSrc' : 'backSrc'
+    const vectorKey = side === 'front' ? 'frontIsVector' : 'backIsVector'
     const processedKey = side === 'front' ? 'frontProcessedSrc' : 'backProcessedSrc'
     const cropKey = side === 'front' ? 'frontCrop' : 'backCrop'
     const operationToken = beginCardOperation(currentCard.id)
@@ -501,6 +504,7 @@ function App() {
         const nextCard = {
           ...latestCard,
           [sourceKey]: nextSourceUrl,
+          [vectorKey]: isSvgFile(file),
           [processedKey]: nextProcessedUrl,
           [cropKey]: crop,
         }
@@ -534,6 +538,7 @@ function App() {
     if (!currentCard) return
 
     const sourceKey = side === 'front' ? 'frontSrc' : 'backSrc'
+    const vectorKey = side === 'front' ? 'frontIsVector' : 'backIsVector'
     const processedKey = side === 'front' ? 'frontProcessedSrc' : 'backProcessedSrc'
     const cropKey = side === 'front' ? 'frontCrop' : 'backCrop'
     beginCardOperation(currentCard.id)
@@ -541,6 +546,7 @@ function App() {
     const nextCard = {
       ...currentCard,
       [sourceKey]: undefined,
+      [vectorKey]: false,
       [processedKey]: undefined,
       [cropKey]: undefined,
     }
@@ -835,6 +841,15 @@ function App() {
         return
       }
 
+      const disallowedSource = findDisallowedSources(
+        parsed.cards,
+        `${import.meta.env.BASE_URL}decks/`,
+      )
+      if (disallowedSource) {
+        setExportError(disallowedSource)
+        return
+      }
+
       const validatedSettings = validateProjectSettings(
         parsed.project.settings,
         isPresetName,
@@ -864,8 +879,13 @@ function App() {
       const nextSize = CARD_PRESETS[nextSettings.presetName]
       for (const card of originalCards) beginCardOperation(card.id)
 
+      const cardsWithVectorFlags = parsed.cards.map((card) => ({
+        ...card,
+        ...(card.frontSrc !== undefined && { frontIsVector: isSvgUrl(card.frontSrc) }),
+        ...(card.backSrc !== undefined && { backIsVector: isSvgUrl(card.backSrc) }),
+      }))
       const convertedCards = await convertProjectDataSourcesToBlobUrls(
-        parsed.cards,
+        cardsWithVectorFlags,
         dataUrlToBlobUrl,
         (url) => generatedUrls.push(url),
       )

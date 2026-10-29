@@ -1,6 +1,8 @@
 import type { Size } from './geometry.ts'
 import type { PixelCropRect } from '../types.ts'
 import { intersectCrop } from './intersectCrop.ts'
+import { isSvgUrl } from './vectorSource.ts'
+import { svgIntrinsicSize } from './svgSize.ts'
 
 function loadImage(sourceUrl: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -14,10 +16,35 @@ function loadImage(sourceUrl: string): Promise<HTMLImageElement> {
 export async function loadImageSize(sourceUrl: string): Promise<Size> {
   const image = await loadImage(sourceUrl)
   if (image.naturalWidth <= 0 || image.naturalHeight <= 0) {
+    const svgSize = await svgSizeFromSource(sourceUrl)
+    if (svgSize.size) return svgSize.size
+    if (svgSize.isSvg) throw new Error('this SVG has no usable dimensions.')
     throw new Error('The image has invalid dimensions.')
   }
 
   return { width: image.naturalWidth, height: image.naturalHeight }
+}
+
+async function svgSizeFromSource(
+  sourceUrl: string,
+): Promise<{ isSvg: boolean; size?: Size }> {
+  const isSvgUrlSource = isSvgUrl(sourceUrl)
+  if (!isSvgUrlSource && !sourceUrl.startsWith('blob:')) return { isSvg: false }
+
+  try {
+    const response = await fetch(sourceUrl)
+    if (!response.ok) return { isSvg: isSvgUrlSource }
+
+    const svgText = await response.text()
+    const document = new DOMParser().parseFromString(svgText, 'image/svg+xml')
+    const isSvgDocument = document.documentElement.localName.toLowerCase() === 'svg'
+    const isSvg = isSvgUrlSource || isSvgDocument
+    if (!isSvgDocument) return { isSvg }
+
+    return { isSvg: true, size: svgIntrinsicSize(svgText) }
+  } catch {
+    return { isSvg: isSvgUrlSource }
+  }
 }
 
 export async function renderCrop(
