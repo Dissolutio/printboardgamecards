@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   cornerScaleTicks,
   estimatePrintScale,
+  expectedScaleGapSpaces,
   fullWidthScaleTicks,
   scaleBandY,
   SHEET_WIDTH_MM,
@@ -102,6 +103,13 @@ describe('estimatePrintScale', () => {
     ]) {
       expect(() => estimatePrintScale(input)).toThrow(RangeError)
     }
+  })
+})
+
+describe('expectedScaleGapSpaces', () => {
+  it('returns the total expected gap spaces for A4 and Letter paper', () => {
+    expect(expectedScaleGapSpaces(SHEET_WIDTH_MM.A4)).toBe(10)
+    expect(expectedScaleGapSpaces(SHEET_WIDTH_MM.LETTER)).toBeCloseTo(15.9)
   })
 })
 

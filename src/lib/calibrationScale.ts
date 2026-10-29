@@ -3,6 +3,10 @@ export const SHEET_WIDTH_MM = {
   A4: 210,
 } as const
 
+export function expectedScaleGapSpaces(sheetWidthMm: number): number {
+  return sheetWidthMm - 200
+}
+
 export type ScaleTick = {
   mm: number
   kind: 'minor' | 'mid' | 'major'
