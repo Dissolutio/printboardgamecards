@@ -121,6 +121,20 @@ describe('cornerLabelBoxes', () => {
           }
           const labels = cornerLabelBoxes(mark, paper)
           const tickLines = cornerTickLines(mark)
+          const trimLines = [
+            {
+              left: mark.x - 100,
+              top: mark.y - 0.125,
+              width: 200,
+              height: 0.25,
+            },
+            {
+              left: mark.x - 0.125,
+              top: mark.y - 100,
+              width: 0.25,
+              height: 200,
+            },
+          ]
           const markCircle = {
             left: mark.x - 3,
             top: mark.y - 3,
@@ -136,6 +150,9 @@ describe('cornerLabelBoxes', () => {
             }
             for (const tickLine of tickLines) {
               expect(intersects(labels[first], tickLine)).toBe(false)
+            }
+            for (const trimLine of trimLines) {
+              expect(intersects(labels[first], trimLine)).toBe(false)
             }
           }
           expect(labels.filter(({ axis }) => axis === 'horizontal').map(({ text }) => text))
@@ -223,14 +240,16 @@ describe('estimatePrintScale', () => {
 })
 
 describe('scaleBandY', () => {
-  const tightGridWithoutScale = new Set([
+  const gridsWithoutScale = new Set([
     'LETTER POKER tight',
     'LETTER MINI tight',
+    'A4 POKER tight',
     'A4 BRIDGE tight',
+    'A4 MINI tight',
     'A4 MINI regular',
   ])
   const scaleTopOffset = 4
-  const scaleBottomOffset = 11
+  const scaleBottomOffset = 14
   const edgeClearance = 17
   const trimClearance = 6
 
@@ -256,7 +275,7 @@ describe('scaleBandY', () => {
             lastTrimBottomPt,
           })
 
-          const shouldSkip = tightGridWithoutScale.has(
+          const shouldSkip = gridsWithoutScale.has(
             `${paperName} ${presetName} ${gridName}`,
           )
           expect(y === null).toBe(shouldSkip)
@@ -288,5 +307,28 @@ describe('scaleBandY', () => {
         lastTrimBottomPt: 75,
       }),
     ).toBeNull()
+  })
+
+  it('keeps both sides clear of the paper edges after calibration', () => {
+    const paper = PAPER.LETTER
+    const firstTrimTopPt = 135
+    const lastTrimBottomPt = 657
+
+    for (const backOffsetY of [-mmToPt(10), 0, mmToPt(10)]) {
+      const y = scaleBandY({
+        paperHeightPt: paper.height,
+        firstTrimTopPt,
+        lastTrimBottomPt,
+        backOffsetY,
+      })
+
+      expect(y).not.toBeNull()
+      for (const lineY of [y ?? 0, (y ?? 0) + backOffsetY]) {
+        expect(lineY - scaleTopOffset).toBeGreaterThanOrEqual(edgeClearance)
+        expect(paper.height - (lineY + scaleBottomOffset)).toBeGreaterThanOrEqual(
+          edgeClearance,
+        )
+      }
+    }
   })
 })

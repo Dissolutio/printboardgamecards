@@ -1,4 +1,4 @@
-import type { Point, Size } from './geometry.ts'
+import { mmToPt, type Point, type Size } from './geometry.ts'
 
 export const SHEET_WIDTH_MM = {
   LETTER: 215.9,
@@ -34,7 +34,7 @@ export function fullWidthScaleTicks(paperWidthPt: number): ScaleTick[] {
 
     return {
       mm,
-      xPt: roundThousandth(paperWidthPt / 2 + (mm * 72) / 25.4),
+      xPt: roundThousandth(paperWidthPt / 2 + mmToPt(mm)),
       kind,
       ...(kind === 'major' ? { label: String(mm) } : {}),
     }
@@ -49,7 +49,7 @@ export function cornerScaleTicks(): ScaleTick[] {
 
     return {
       mm,
-      offsetPt: roundThousandth((mm * 72) / 25.4),
+      offsetPt: roundThousandth(mmToPt(mm)),
       kind,
       ...(kind === 'mid' ? { label: String(mm) } : {}),
     }
@@ -68,12 +68,12 @@ export function cornerLabelBoxes(
   const isTop = mark.y < paper.height / 2
   const ticks = cornerScaleTicks().filter((tick) => tick.label !== undefined)
   const width = 7
-  const height = 5
+  const height = 7
 
   return ticks.flatMap((tick) => {
     const offsetPt = tick.offsetPt ?? 0
     const index = labelIndex(tick.mm)
-    const rowOffset = 8 + (index % 3) * 6
+    const rowOffset = 8 + (index % 3) * 8
     const innerOffset = 22 + (index % 3) * 8
 
     return [
@@ -89,7 +89,7 @@ export function cornerLabelBoxes(
         axis: 'vertical' as const,
         text: tick.label ?? '',
         left: isLeft ? mark.x + innerOffset : mark.x - innerOffset - width,
-        top: mark.y + offsetPt - height / 2,
+        top: mark.y + offsetPt - height / 2 + Math.sign(tick.mm) * 2,
         width,
         height,
       },
@@ -121,30 +121,36 @@ export function scaleBandY({
   paperHeightPt,
   firstTrimTopPt,
   lastTrimBottomPt,
+  backOffsetY = 0,
 }: {
   paperHeightPt: number
   firstTrimTopPt: number
   lastTrimBottomPt: number
+  backOffsetY?: number
 }): number | null {
   const edgeClearance = 17
   const trimClearance = 6
   const tickHalfHeight = 4
-  const labelBottomOffset = 11
-  const topLineY = 30
+  const labelBottomOffset = 14
+  const topSafeLineY = edgeClearance + tickHalfHeight
+  const bottomSafeLineY = paperHeightPt - edgeClearance - labelBottomOffset
+  const topLineY = Math.max(topSafeLineY, topSafeLineY - backOffsetY, 30)
 
   if (
     Number.isFinite(paperHeightPt) &&
     Number.isFinite(firstTrimTopPt) &&
+    Number.isFinite(backOffsetY) &&
     topLineY - tickHalfHeight >= edgeClearance &&
     topLineY + labelBottomOffset + trimClearance <= firstTrimTopPt
   ) {
     return topLineY
   }
 
-  const bottomLineY = paperHeightPt - edgeClearance - labelBottomOffset
+  const bottomLineY = Math.min(bottomSafeLineY, bottomSafeLineY - backOffsetY)
   if (
     Number.isFinite(paperHeightPt) &&
     Number.isFinite(lastTrimBottomPt) &&
+    Number.isFinite(backOffsetY) &&
     bottomLineY - tickHalfHeight >= lastTrimBottomPt + trimClearance
   ) {
     return bottomLineY

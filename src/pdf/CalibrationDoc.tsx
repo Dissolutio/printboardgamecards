@@ -312,6 +312,7 @@ export default function CalibrationDoc({
       (grid.rows - 1) * grid.cellH +
       DEFAULT_BLEED +
       cardSize.height,
+    backOffsetY: calibration.offsetY,
   })
   const pages = [
     {
