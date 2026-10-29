@@ -14,6 +14,8 @@ describe('validateEntryPath', () => {
     '',
     '/absolute.pdf',
     'parent/../cards.pdf',
+    'a/./b',
+    'a//b',
     '..',
     'folder\\cards.pdf',
     'C:cards.pdf',
@@ -36,6 +38,11 @@ describe('validateEntryPath', () => {
       expect(validateEntryPath(path)).toBeUndefined()
     },
   )
+
+  it('explains dot and empty path segments', () => {
+    expect(validateEntryPath('a/./b')).toBe('Path must not contain . segments')
+    expect(validateEntryPath('a//b')).toBe('Path must not contain empty segments')
+  })
 })
 
 describe('buildBundle', () => {
@@ -76,6 +83,19 @@ describe('buildBundle', () => {
 
     expect(pdf.length).toBeGreaterThan(svg.length)
   })
+
+  it.each(['Makefile', 'v1.2/data', '.hidden'])(
+    'uses the default compression for names without a recognized extension: %s',
+    (path) => {
+      const zip = buildBundle(
+        [{ path, data: 'repetitive content '.repeat(100) }],
+        { readme: false },
+      )
+      const header = new DataView(zip.buffer, zip.byteOffset, zip.byteLength)
+
+      expect(header.getUint16(8, true)).toBe(8)
+    },
+  )
 
   it('honors readme and compression options', () => {
     const entries: BundleEntry[] = [{ path: 'file.txt', data: 'text '.repeat(20) }]
