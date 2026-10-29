@@ -33,22 +33,23 @@ describe('CalibrationDoc', () => {
     })
   }
 
-  it('renders both pages with a non-zero calibration offset', async () => {
-    const paper = PAPER.A4
-    const cardSize = CARD_PRESETS.POKER
-    const grid = calculateGrid({ paper, card: cardSize })
-    const pdfBytes = await renderToBuffer(
-      <CalibrationDoc
-        paper={paper}
-        cardSize={cardSize}
-        grid={grid}
-        calibration={{ offsetX: mmToPt(1), offsetY: mmToPt(-0.5) }}
-      />,
-    )
+  for (const { paper } of paperCases) {
+    it(`renders front and calibrated back pages on ${paper.width}×${paper.height} pt`, async () => {
+      const cardSize = CARD_PRESETS.POKER
+      const grid = calculateGrid({ paper, card: cardSize })
+      const pdfBytes = await renderToBuffer(
+        <CalibrationDoc
+          paper={paper}
+          cardSize={cardSize}
+          grid={grid}
+          calibration={{ offsetX: mmToPt(1), offsetY: mmToPt(-0.5) }}
+        />,
+      )
 
-    expect(pageMediaBoxes(pdfBytes)).toEqual([
-      [0, 0, paper.width, paper.height],
-      [0, 0, paper.width, paper.height],
-    ])
-  })
+      expect(pageMediaBoxes(pdfBytes)).toEqual([
+        [0, 0, paper.width, paper.height],
+        [0, 0, paper.width, paper.height],
+      ])
+    })
+  }
 })
