@@ -1199,12 +1199,13 @@ function App() {
                   max={10}
                   step={0.05}
                   value={calibrationDraft.offsetXmm}
-                  onChange={(event) =>
+                  onChange={(event) => {
+                    const value = event.currentTarget.value
                     setCalibrationDraft((current) => ({
                       ...current,
-                      offsetXmm: event.currentTarget.value,
+                      offsetXmm: value,
                     }))
-                  }
+                  }}
                   onBlur={() => commitCalibrationAxis('offsetXmm')}
                   onKeyDown={(event) => {
                     if (event.key === 'Enter') event.currentTarget.blur()
@@ -1220,12 +1221,13 @@ function App() {
                   max={10}
                   step={0.05}
                   value={calibrationDraft.offsetYmm}
-                  onChange={(event) =>
+                  onChange={(event) => {
+                    const value = event.currentTarget.value
                     setCalibrationDraft((current) => ({
                       ...current,
-                      offsetYmm: event.currentTarget.value,
+                      offsetYmm: value,
                     }))
-                  }
+                  }}
                   onBlur={() => commitCalibrationAxis('offsetYmm')}
                   onKeyDown={(event) => {
                     if (event.key === 'Enter') event.currentTarget.blur()
