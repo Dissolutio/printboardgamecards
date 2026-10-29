@@ -18,7 +18,6 @@ import {
   calculateTightGrid,
   CARD_PRESETS,
   DEFAULT_BLEED,
-  mmToPt,
   PAPER,
   type PieceOrientation,
   type Size,
@@ -29,10 +28,22 @@ import {
   addCalibration,
   calibrationFromObserved,
   clampCalibration,
-  loadCalibration,
-  saveCalibration,
   type CalibrationMm,
 } from './lib/calibration.ts'
+import {
+  addProfile,
+  deleteProfile,
+  duplexPdfFilename,
+  exportCalibrationPt,
+  hasCalibration,
+  loadPrinterProfiles,
+  renameProfile,
+  savePrinterProfiles,
+  selectProfile,
+  updateActiveOffsets,
+  type ExportKind,
+  type PrinterProfiles,
+} from './lib/printerProfiles.ts'
 import { hasBackground } from './lib/piece.ts'
 import { loadImageSize, renderCrop } from './lib/renderCrop.ts'
 import { parseProject, serializeProject } from './lib/project.ts'
@@ -45,7 +56,6 @@ import {
 import {
   layoutDuplexPages,
   layoutPrintAndGlue,
-  type Calibration,
 } from './lib/layout.ts'
 import type { BleedMode, Card, CardSide, PixelCropRect } from './types.ts'
 
@@ -229,10 +239,14 @@ function App() {
   const [paperName, setPaperName] = useState<PaperName>('LETTER')
   const [exportMode, setExportMode] = useState<ExportMode>('PRINT_GLUE')
   const [pieceOrientation, setPieceOrientation] = useState<PieceOrientation>('AUTO')
-  const [calibration, setCalibration] = useState<CalibrationMm>(loadCalibration)
+  const [printerProfiles, setPrinterProfiles] =
+    useState<PrinterProfiles>(loadPrinterProfiles)
+  const activeProfile =
+    printerProfiles.profiles.find(({ id }) => id === printerProfiles.activeId) ??
+    printerProfiles.profiles[0]
   const [calibrationDraft, setCalibrationDraft] = useState({
-    offsetXmm: calibration.offsetXmm.toFixed(2),
-    offsetYmm: calibration.offsetYmm.toFixed(2),
+    offsetXmm: activeProfile.offsetXmm.toFixed(2),
+    offsetYmm: activeProfile.offsetYmm.toFixed(2),
   })
   const [observedXmm, setObservedXmm] = useState('')
   const [observedYmm, setObservedYmm] = useState('')
@@ -252,17 +266,14 @@ function App() {
     card: cardSize,
     orientation: pieceOrientation,
   })
-  const calibrationPt: Calibration = {
-    offsetX: mmToPt(calibration.offsetXmm),
-    offsetY: mmToPt(calibration.offsetYmm),
-  }
+  const calibrationPt = exportCalibrationPt('CALIBRATED', activeProfile)
   const selectedCard = cards.find((card) => card.id === selectedId)
   const isProjectControlsDisabled =
     isChangingPreset || isSavingProject || isLoadingProject || isExporting
   const pageCount =
     exportMode === 'PRINT_GLUE'
       ? layoutPrintAndGlue(cards, tightGrid).length
-      : layoutDuplexPages(cards, grid, calibrationPt).length
+      : layoutDuplexPages(cards, grid, exportCalibrationPt('ORIGINAL', activeProfile)).length
 
   useEffect(
     () => () => {
@@ -300,18 +311,29 @@ function App() {
     })
   }
 
-  function persistCalibration(nextCalibration: CalibrationMm) {
-    const normalized = clampCalibration(nextCalibration)
-    setCalibration(normalized)
-    setCalibrationDraft({
-      offsetXmm: normalized.offsetXmm.toFixed(2),
-      offsetYmm: normalized.offsetYmm.toFixed(2),
-    })
+  function persistPrinterProfiles(nextProfiles: PrinterProfiles) {
+    setPrinterProfiles(nextProfiles)
     setCalibrationStorageWarning(
-      saveCalibration(normalized)
+      savePrinterProfiles(nextProfiles)
         ? undefined
         : 'Calibration changes could not be saved; reloading may lose them.',
     )
+  }
+
+  function syncCalibrationDraft(profile: PrinterProfiles['profiles'][number]) {
+    setCalibrationDraft({
+      offsetXmm: profile.offsetXmm.toFixed(2),
+      offsetYmm: profile.offsetYmm.toFixed(2),
+    })
+  }
+
+  function persistActiveCalibration(nextCalibration: CalibrationMm) {
+    const nextProfiles = updateActiveOffsets(printerProfiles, nextCalibration)
+    const nextProfile =
+      nextProfiles.profiles.find(({ id }) => id === nextProfiles.activeId) ??
+      nextProfiles.profiles[0]
+    persistPrinterProfiles(nextProfiles)
+    syncCalibrationDraft(nextProfile)
   }
 
   function commitCalibrationAxis(axis: keyof CalibrationMm) {
@@ -320,26 +342,26 @@ function App() {
     if (!Number.isFinite(value)) {
       setCalibrationDraft((current) => ({
         ...current,
-        [axis]: calibration[axis].toFixed(2),
+        [axis]: activeProfile[axis].toFixed(2),
       }))
       return
     }
-    persistCalibration({ ...calibration, [axis]: value })
+    persistActiveCalibration({ ...activeProfile, [axis]: value })
   }
 
   function resetCalibration() {
-    persistCalibration(ZERO_CALIBRATION_MM)
+    persistActiveCalibration(ZERO_CALIBRATION_MM)
   }
 
   function applyObservedCorrection() {
     const currentCalibration = clampCalibration({
       offsetXmm:
         calibrationDraft.offsetXmm.trim() === ''
-          ? calibration.offsetXmm
+          ? activeProfile.offsetXmm
           : Number(calibrationDraft.offsetXmm),
       offsetYmm:
         calibrationDraft.offsetYmm.trim() === ''
-          ? calibration.offsetYmm
+          ? activeProfile.offsetYmm
           : Number(calibrationDraft.offsetYmm),
     })
     const observationX = Number(observedXmm)
@@ -352,9 +374,42 @@ function App() {
         calibrationFromObserved(observationX, observationY),
       ),
     )
-    persistCalibration(nextCalibration)
+    persistActiveCalibration(nextCalibration)
     setObservedXmm('')
     setObservedYmm('')
+  }
+
+  function handleSelectPrinter(id: string) {
+    const nextProfiles = selectProfile(printerProfiles, id)
+    const nextProfile =
+      nextProfiles.profiles.find(({ id: profileId }) => profileId === nextProfiles.activeId) ??
+      nextProfiles.profiles[0]
+    persistPrinterProfiles(nextProfiles)
+    syncCalibrationDraft(nextProfile)
+  }
+
+  function handleAddPrinter() {
+    const name = window.prompt('New printer name', `Printer ${printerProfiles.profiles.length + 1}`)
+    if (name === null) return
+    const nextProfiles = addProfile(printerProfiles, name)
+    if (nextProfiles === printerProfiles) return
+    persistPrinterProfiles(nextProfiles)
+    syncCalibrationDraft(nextProfiles.profiles[nextProfiles.profiles.length - 1])
+  }
+
+  function handleRenamePrinter() {
+    const name = window.prompt('Rename printer', activeProfile.name)
+    if (name === null) return
+    persistPrinterProfiles(renameProfile(printerProfiles, activeProfile.id, name))
+  }
+
+  function handleDeletePrinter() {
+    const nextProfiles = deleteProfile(printerProfiles, activeProfile.id)
+    const nextProfile =
+      nextProfiles.profiles.find(({ id }) => id === nextProfiles.activeId) ??
+      nextProfiles.profiles[0]
+    persistPrinterProfiles(nextProfiles)
+    syncCalibrationDraft(nextProfile)
   }
 
   function beginCardOperation(cardId: string): number {
@@ -870,6 +925,52 @@ function App() {
     }
   }
 
+  async function handleDownloadDuplex(kind: ExportKind) {
+    if (presetInProgress.current || projectOperationInProgress.current) return
+    if (pageCount === 0) {
+      setExportError('Upload and crop a front image before exporting.')
+      return
+    }
+
+    setIsExporting(true)
+    setExportError(undefined)
+
+    try {
+      const exportCards = await Promise.all(
+        cards.map(async (card) => {
+          const [frontProcessedSrc, backProcessedSrc] = await Promise.all([
+            card.frontProcessedSrc
+              ? blobUrlToDataUrl(card.frontProcessedSrc)
+              : undefined,
+            card.backProcessedSrc
+              ? blobUrlToDataUrl(card.backProcessedSrc)
+              : undefined,
+          ])
+          return { ...card, frontProcessedSrc, backProcessedSrc }
+        }),
+      )
+      const pdfBlob = await pdf(
+        <DuplexDoc
+          cards={exportCards}
+          paper={paper}
+          grid={grid}
+          cardSize={cardSize}
+          calibration={exportCalibrationPt(kind, activeProfile)}
+        />,
+      ).toBlob()
+      downloadBlob(
+        pdfBlob,
+        duplexPdfFilename(kind, paperName, activeProfile.name),
+      )
+    } catch (error) {
+      setExportError(
+        error instanceof Error ? error.message : 'PDF export failed. Please try again.',
+      )
+    } finally {
+      setIsExporting(false)
+    }
+  }
+
   async function handleDownload() {
     if (presetInProgress.current || projectOperationInProgress.current) return
     if (pageCount === 0) {
@@ -894,24 +995,14 @@ function App() {
           return { ...card, frontProcessedSrc, backProcessedSrc }
         }),
       )
-      const pdfDocument =
-        exportMode === 'PRINT_GLUE' ? (
-          <PrintAndGlueDoc
-            cards={exportCards}
-            paper={paper}
-            grid={tightGrid}
-            cardSize={cardSize}
-          />
-        ) : (
-          <DuplexDoc
-            cards={exportCards}
-            paper={paper}
-            grid={grid}
-            cardSize={cardSize}
-            calibration={calibrationPt}
-          />
-        )
-      const pdfBlob = await pdf(pdfDocument).toBlob()
+      const pdfBlob = await pdf(
+        <PrintAndGlueDoc
+          cards={exportCards}
+          paper={paper}
+          grid={tightGrid}
+          cardSize={cardSize}
+        />,
+      ).toBlob()
       downloadBlob(pdfBlob, `printboard-cards-${paperName.toLowerCase()}.pdf`)
     } catch (error) {
       setExportError(
@@ -1056,6 +1147,48 @@ function App() {
               </p>
             </div>
 
+            <div className="flex flex-wrap items-end gap-3">
+              <label className="form-control min-w-56 flex-1 sm:max-w-sm">
+                <span className="label-text mb-1">Printer profile</span>
+                <select
+                  className="select select-bordered"
+                  value={activeProfile.id}
+                  disabled={isProjectControlsDisabled}
+                  onChange={(event) => handleSelectPrinter(event.currentTarget.value)}
+                >
+                  {printerProfiles.profiles.map((profile) => (
+                    <option key={profile.id} value={profile.id}>
+                      {profile.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button
+                className="btn btn-outline"
+                type="button"
+                disabled={printerProfiles.profiles.length >= 10 || isProjectControlsDisabled}
+                onClick={handleAddPrinter}
+              >
+                New printer
+              </button>
+              <button
+                className="btn btn-outline"
+                type="button"
+                disabled={isProjectControlsDisabled}
+                onClick={handleRenamePrinter}
+              >
+                Rename
+              </button>
+              <button
+                className="btn btn-outline btn-error"
+                type="button"
+                disabled={printerProfiles.profiles.length <= 1 || isProjectControlsDisabled}
+                onClick={handleDeletePrinter}
+              >
+                Delete
+              </button>
+            </div>
+
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="form-control">
                 <span className="label-text mb-1">Current X offset (mm)</span>
@@ -1066,12 +1199,13 @@ function App() {
                   max={10}
                   step={0.05}
                   value={calibrationDraft.offsetXmm}
-                  onChange={(event) =>
+                  onChange={(event) => {
+                    const value = event.currentTarget.value
                     setCalibrationDraft((current) => ({
                       ...current,
-                      offsetXmm: event.currentTarget.value,
+                      offsetXmm: value,
                     }))
-                  }
+                  }}
                   onBlur={() => commitCalibrationAxis('offsetXmm')}
                   onKeyDown={(event) => {
                     if (event.key === 'Enter') event.currentTarget.blur()
@@ -1087,12 +1221,13 @@ function App() {
                   max={10}
                   step={0.05}
                   value={calibrationDraft.offsetYmm}
-                  onChange={(event) =>
+                  onChange={(event) => {
+                    const value = event.currentTarget.value
                     setCalibrationDraft((current) => ({
                       ...current,
-                      offsetYmm: event.currentTarget.value,
+                      offsetYmm: value,
                     }))
-                  }
+                  }}
                   onBlur={() => commitCalibrationAxis('offsetYmm')}
                   onKeyDown={(event) => {
                     if (event.key === 'Enter') event.currentTarget.blur()
@@ -1260,14 +1395,39 @@ function App() {
               {pageCount} {exportMode === 'DUPLEX' ? 'page pair' : 'page'}
               {pageCount === 1 ? '' : 's'} · {totalCopies(cards)} total copies
             </p>
-            <button
-              className="btn btn-primary"
-              type="button"
-              disabled={pageCount === 0 || isProjectControlsDisabled}
-              onClick={handleDownload}
-            >
-              {isExporting ? 'Preparing PDF…' : 'Download PDF'}
-            </button>
+            {exportMode === 'PRINT_GLUE' ? (
+              <button
+                className="btn btn-primary"
+                type="button"
+                disabled={pageCount === 0 || isProjectControlsDisabled}
+                onClick={handleDownload}
+              >
+                {isExporting ? 'Preparing PDF…' : 'Download PDF'}
+              </button>
+            ) : (
+              <>
+                <button
+                  className="btn btn-primary"
+                  type="button"
+                  disabled={pageCount === 0 || isProjectControlsDisabled}
+                  onClick={() => handleDownloadDuplex('ORIGINAL')}
+                >
+                  {isExporting ? 'Preparing PDF…' : 'Download PDF (original, shareable)'}
+                </button>
+                <button
+                  className="btn btn-outline"
+                  type="button"
+                  disabled={
+                    pageCount === 0 ||
+                    !hasCalibration(activeProfile) ||
+                    isProjectControlsDisabled
+                  }
+                  onClick={() => handleDownloadDuplex('CALIBRATED')}
+                >
+                  Download calibrated for {activeProfile.name}
+                </button>
+              </>
+            )}
             <button
               className="btn btn-outline"
               type="button"
@@ -1293,6 +1453,11 @@ function App() {
               onChange={handleLoadProject}
             />
           </div>
+          {exportMode === 'DUPLEX' && (
+            <p className="w-full text-sm text-base-content/70">
+              Calibrated files only work on the printer they were measured on. Share the original.
+            </p>
+          )}
           <p className="max-w-2xl text-sm font-medium text-warning">
             {exportMode === 'DUPLEX'
               ? 'Print at Actual Size. Flip on Long Edge. If printing by hand: print page 1, reload the sheet flipped on its long edge, then print page 2.'

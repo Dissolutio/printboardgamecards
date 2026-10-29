@@ -10,7 +10,7 @@ Printboard Game Cards is a browser app for preparing board-game cards from your 
 
 ## Duplex calibration
 
-Calibration adjusts the back only; the front stays fixed. Entered X and Y offsets are in millimeters and are saved in the browser's `localStorage`. The calibration sheet and on-screen instructions help measure and adjust duplex alignment.
+Calibration adjusts the back only; the front stays fixed. Printer profiles and their X/Y offsets (in millimeters) are stored in the browser's `localStorage`, so calibration belongs to a printer rather than a deck. Share the original, uncalibrated PDF; the calibrated PDF is named with the printer profile name and is only for that printer. The calibration sheet and on-screen instructions help measure and adjust duplex alignment.
 
 ## Sizes and units
 
