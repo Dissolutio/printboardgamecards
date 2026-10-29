@@ -47,9 +47,9 @@ import {
 import { hasBackground } from './lib/piece.ts'
 import { parseMeasurement } from './lib/calibrationInput.ts'
 import {
+  calibrationScaleY,
   estimatePrintScale,
   expectedScaleGapSpaces,
-  scaleBandY,
   SHEET_WIDTH_MM,
 } from './lib/calibrationScale.ts'
 import { getImageType } from './lib/imageType.ts'
@@ -298,16 +298,9 @@ function App() {
     card: cardSize,
     orientation: pieceOrientation,
   })
+  const calibrationPt = exportCalibrationPt('CALIBRATED', activeProfile)
   const hasCalibrationScale =
-    scaleBandY({
-      paperHeightPt: paper.height,
-      firstTrimTopPt: grid.originY + DEFAULT_BLEED,
-      lastTrimBottomPt:
-        grid.originY +
-        (grid.rows - 1) * grid.cellH +
-        DEFAULT_BLEED +
-        cardSize.height,
-    }) !== null
+    calibrationScaleY({ paper, grid, cardSize, backOffsetY: calibrationPt.offsetY }) !== null
   const scaleGapValue = parseMeasurement(scaleGapInput)
   const validScaleGap = scaleGapValue !== undefined && scaleGapValue >= 0
   const scaleEstimate =
@@ -317,7 +310,6 @@ function App() {
           gapSpaces: scaleGapValue,
         })
       : undefined
-  const calibrationPt = exportCalibrationPt('CALIBRATED', activeProfile)
   const selectedCard = cards.find((card) => card.id === selectedId)
   const isProjectControlsDisabled =
     isChangingPreset || isSavingProject || isLoadingProject || isExporting

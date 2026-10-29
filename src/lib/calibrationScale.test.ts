@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   cornerLabelBoxes,
+  calibrationScaleY,
   cornerScaleTicks,
   estimatePrintScale,
   expectedScaleGapSpaces,
@@ -234,6 +235,47 @@ describe('expectedScaleGapSpaces', () => {
   it('returns the total expected gap spaces for A4 and Letter paper', () => {
     expect(expectedScaleGapSpaces(SHEET_WIDTH_MM.A4)).toBe(10)
     expect(expectedScaleGapSpaces(SHEET_WIDTH_MM.LETTER)).toBeCloseTo(15.9)
+  })
+})
+
+describe('calibrationScaleY', () => {
+  it.each(Object.entries(PAPER))(
+    'matches the shared app and PDF scale band for %s with a nonzero offset',
+    (_paperName, paper) => {
+      const cardSize = CARD_PRESETS.POKER
+      const grid = calculateGrid({ paper, card: cardSize })
+      const backOffsetY = -mmToPt(10)
+
+      expect(
+        calibrationScaleY({ paper, grid, cardSize, backOffsetY }),
+      ).toBe(
+        scaleBandY({
+          paperHeightPt: paper.height,
+          firstTrimTopPt: grid.originY + DEFAULT_BLEED,
+          lastTrimBottomPt:
+            grid.originY +
+            (grid.rows - 1) * grid.cellH +
+            DEFAULT_BLEED +
+            cardSize.height,
+          backOffsetY,
+        }),
+      )
+      expect(
+        calibrationScaleY({ paper, grid, cardSize, backOffsetY }),
+      ).not.toBe(
+        calibrationScaleY({ paper, grid, cardSize, backOffsetY: 0 }),
+      )
+    },
+  )
+
+  it('returns null when the scale step must be hidden', () => {
+    const paper = PAPER.A4
+    const cardSize = CARD_PRESETS.MINI
+    const grid = calculateGrid({ paper, card: cardSize })
+
+    expect(
+      calibrationScaleY({ paper, grid, cardSize, backOffsetY: 0 }),
+    ).toBeNull()
   })
 })
 

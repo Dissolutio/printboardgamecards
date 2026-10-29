@@ -10,9 +10,9 @@ import type { Grid, Calibration } from '../lib/layout.ts'
 import { calibrationMarks, type CalibrationMark } from '../lib/calibration.ts'
 import {
   cornerLabelBoxes,
+  calibrationScaleY,
   cornerScaleTicks,
   fullWidthScaleTicks,
-  scaleBandY,
   type ScaleTick,
 } from '../lib/calibrationScale.ts'
 
@@ -304,14 +304,10 @@ export default function CalibrationDoc({
   calibration,
 }: CalibrationDocProps) {
   const marks = calibrationMarks(grid, paper, calibration)
-  const scaleY = scaleBandY({
-    paperHeightPt: paper.height,
-    firstTrimTopPt: grid.originY + DEFAULT_BLEED,
-    lastTrimBottomPt:
-      grid.originY +
-      (grid.rows - 1) * grid.cellH +
-      DEFAULT_BLEED +
-      cardSize.height,
+  const scaleY = calibrationScaleY({
+    paper,
+    grid,
+    cardSize,
     backOffsetY: calibration.offsetY,
   })
   const pages = [

@@ -1,4 +1,4 @@
-import { mmToPt, type Point, type Size } from './geometry.ts'
+import { DEFAULT_BLEED, mmToPt, type Point, type Size } from './geometry.ts'
 
 export const SHEET_WIDTH_MM = {
   LETTER: 215.9,
@@ -161,4 +161,27 @@ export function scaleBandY({
   }
 
   return null
+}
+
+export function calibrationScaleY({
+  paper,
+  grid,
+  cardSize,
+  backOffsetY,
+}: {
+  paper: Size
+  grid: { originY: number; rows: number; cellH: number }
+  cardSize: Size
+  backOffsetY: number
+}): number | null {
+  return scaleBandY({
+    paperHeightPt: paper.height,
+    firstTrimTopPt: grid.originY + DEFAULT_BLEED,
+    lastTrimBottomPt:
+      grid.originY +
+      (grid.rows - 1) * grid.cellH +
+      DEFAULT_BLEED +
+      cardSize.height,
+    backOffsetY,
+  })
 }
