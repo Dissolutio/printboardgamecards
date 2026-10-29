@@ -2,10 +2,15 @@ import { readFile, readdir, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { DOMParser } from '@xmldom/xmldom'
 import { beforeAll, describe, expect, it } from 'vitest'
-import { orderedCardIds } from './build-classic-deck.mjs'
+import {
+  fitBoundsToSafeArea,
+  orderedCardIds,
+  transformBounds,
+} from './build-classic-deck.mjs'
 
 const deckDirectory = join(process.cwd(), 'public/decks/classic')
 const forbidden = /<(?:text|tspan|filter|image|style)\b|font-family|class=|\b(?:NaN|undefined)\b/i
+const safeArea = 9
 
 describe('classic deck assets', () => {
   let manifest: {
@@ -73,6 +78,45 @@ describe('classic deck assets', () => {
         }
       }
     }
+  })
+
+  it('keeps both outlined Joker wordmarks inside the 9 pt safe area', async () => {
+    for (const id of ['Joker1', 'Joker2']) {
+      const svg = await readFile(join(deckDirectory, `${id}.svg`), 'utf8')
+      const document = new DOMParser().parseFromString(svg, 'image/svg+xml')
+      const root = document.documentElement
+      const bounds = root
+        .getAttribute('data-joker-wordmark-bounds')
+        ?.split(/\s+/)
+        .map(Number)
+      expect(svg, id).not.toMatch(/<(?:text|tspan)\b|font-family/i)
+      expect(bounds, id).toHaveLength(4)
+      expect(bounds?.[0], id).toBeGreaterThanOrEqual(safeArea)
+      expect(bounds?.[1], id).toBeGreaterThanOrEqual(safeArea)
+      expect(bounds?.[2], id).toBeLessThanOrEqual(manifest.viewBox.width - safeArea)
+      expect(bounds?.[3], id).toBeLessThanOrEqual(manifest.viewBox.height - safeArea)
+
+      const wordmarks = Array.from(root.getElementsByTagName('*')).filter((element) =>
+        element.hasAttribute('data-joker-wordmark'),
+      )
+      expect(
+        new Set(wordmarks.map((element) => element.getAttribute('data-joker-wordmark'))),
+        id,
+      ).toEqual(new Set(['top-left', 'bottom-right']))
+    }
+  })
+
+  it('uniformly scales and centers bounds inside the safe area', () => {
+    const bounds = { minX: 2, minY: 4, maxX: 178, maxY: 240 }
+    const viewBox = { width: 167.0869141, height: 242.6669922 }
+    const layout = fitBoundsToSafeArea(bounds, viewBox, safeArea)
+    const fitted = transformBounds(bounds, layout)
+
+    expect(layout.scale).toBeLessThan(1)
+    expect(fitted.minX).toBeGreaterThanOrEqual(safeArea)
+    expect(fitted.minY).toBeGreaterThanOrEqual(safeArea)
+    expect(fitted.maxX).toBeLessThanOrEqual(viewBox.width - safeArea)
+    expect(fitted.maxY).toBeLessThanOrEqual(viewBox.height - safeArea)
   })
 
   it('keeps the complete deck below the 1.5 MiB optimized SVG budget', async () => {
