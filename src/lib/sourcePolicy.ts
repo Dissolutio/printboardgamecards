@@ -1,7 +1,7 @@
 import type { Card } from '../types.ts'
 
 const allowedDataSource =
-  /^data:image\/(?:png|jpeg|webp|gif|svg\+xml)(?:[;,]|$)/i
+  /^data:image\/(?:png|jpeg|webp|gif|bmp|avif|svg\+xml)(?:[;,]|$)/i
 
 export function findDisallowedSources(
   cards: Card[],
