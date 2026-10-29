@@ -13,6 +13,8 @@ const sizes = [
   { name: 'Tarot', width: 700, height: 1200 },
 ] as const
 
+type SvgElement = NonNullable<ReturnType<DOMParser['parseFromString']>['documentElement']>
+
 function parseSvg(svg: string) {
   const errors: string[] = []
   const document = new DOMParser({
@@ -27,15 +29,15 @@ function parseSvg(svg: string) {
   return root
 }
 
-function getChildren(root: Element): Element[] {
-  const elements: Element[] = []
+function getChildren(root: SvgElement): SvgElement[] {
+  const elements: SvgElement[] = []
   for (let node = root.firstChild; node; node = node.nextSibling) {
-    if (node.nodeType === 1) elements.push(node as Element)
+    if (node.nodeType === 1) elements.push(node as SvgElement)
   }
   return elements
 }
 
-function getBounds(element: Element) {
+function getBounds(element: SvgElement) {
   const number = (attribute: string, fallback = 0) => {
     const value = element.getAttribute(attribute)
     return value ? Number(value) : fallback
@@ -91,7 +93,7 @@ function getBounds(element: Element) {
   }
 }
 
-function combinedBounds(elements: Element[]) {
+function combinedBounds(elements: SvgElement[]) {
   const bounds = elements.map(getBounds)
   return {
     left: Math.min(...bounds.map((box) => box.left)),
