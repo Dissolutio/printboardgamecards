@@ -99,14 +99,30 @@ export function loadPrinterProfiles(): PrinterProfiles {
       return defaultProfiles()
     }
 
-    const profiles = parsed.profiles
+    const validProfiles = parsed.profiles
       .filter(isPrinterProfile)
       .slice(0, MAX_PROFILES)
-      .map((profile) => ({
+    const reservedIds = new Set(validProfiles.map(({ id }) => id))
+    const usedIds = new Set<string>()
+    const profiles = validProfiles.map((profile) => {
+      let id = profile.id
+      if (usedIds.has(id)) {
+        const baseId = `${id}-duplicate`
+        id = baseId
+        let suffix = 2
+        while (reservedIds.has(id) || usedIds.has(id)) {
+          id = `${baseId}-${suffix}`
+          suffix += 1
+        }
+      }
+      usedIds.add(id)
+      return {
         ...profile,
+        id,
         name: sanitizeProfileName(profile.name),
         ...clampCalibration(profile),
-      }))
+      }
+    })
     if (profiles.length === 0) return defaultProfiles()
 
     return {

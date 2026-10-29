@@ -274,6 +274,8 @@ function App() {
     exportMode === 'PRINT_GLUE'
       ? layoutPrintAndGlue(cards, tightGrid).length
       : layoutDuplexPages(cards, grid, exportCalibrationPt('ORIGINAL', activeProfile)).length
+  const calibratedDownloadNeedsOffsets =
+    pageCount > 0 && !hasCalibration(activeProfile) && !isProjectControlsDisabled
 
   useEffect(
     () => () => {
@@ -404,6 +406,14 @@ function App() {
   }
 
   function handleDeletePrinter() {
+    if (
+      !window.confirm(
+        `Delete "${activeProfile.name}" (X ${activeProfile.offsetXmm >= 0 ? '+' : ''}${activeProfile.offsetXmm.toFixed(2)} mm, Y ${activeProfile.offsetYmm >= 0 ? '+' : ''}${activeProfile.offsetYmm.toFixed(2)} mm)? This cannot be undone.`,
+      )
+    ) {
+      return
+    }
+
     const nextProfiles = deleteProfile(printerProfiles, activeProfile.id)
     const nextProfile =
       nextProfiles.profiles.find(({ id }) => id === nextProfiles.activeId) ??
@@ -925,6 +935,22 @@ function App() {
     }
   }
 
+  async function getExportCards() {
+    return Promise.all(
+      cards.map(async (card) => {
+        const [frontProcessedSrc, backProcessedSrc] = await Promise.all([
+          card.frontProcessedSrc
+            ? blobUrlToDataUrl(card.frontProcessedSrc)
+            : undefined,
+          card.backProcessedSrc
+            ? blobUrlToDataUrl(card.backProcessedSrc)
+            : undefined,
+        ])
+        return { ...card, frontProcessedSrc, backProcessedSrc }
+      }),
+    )
+  }
+
   async function handleDownloadDuplex(kind: ExportKind) {
     if (presetInProgress.current || projectOperationInProgress.current) return
     if (pageCount === 0) {
@@ -936,19 +962,7 @@ function App() {
     setExportError(undefined)
 
     try {
-      const exportCards = await Promise.all(
-        cards.map(async (card) => {
-          const [frontProcessedSrc, backProcessedSrc] = await Promise.all([
-            card.frontProcessedSrc
-              ? blobUrlToDataUrl(card.frontProcessedSrc)
-              : undefined,
-            card.backProcessedSrc
-              ? blobUrlToDataUrl(card.backProcessedSrc)
-              : undefined,
-          ])
-          return { ...card, frontProcessedSrc, backProcessedSrc }
-        }),
-      )
+      const exportCards = await getExportCards()
       const pdfBlob = await pdf(
         <DuplexDoc
           cards={exportCards}
@@ -982,19 +996,7 @@ function App() {
     setExportError(undefined)
 
     try {
-      const exportCards = await Promise.all(
-        cards.map(async (card) => {
-          const [frontProcessedSrc, backProcessedSrc] = await Promise.all([
-            card.frontProcessedSrc
-              ? blobUrlToDataUrl(card.frontProcessedSrc)
-              : undefined,
-            card.backProcessedSrc
-              ? blobUrlToDataUrl(card.backProcessedSrc)
-              : undefined,
-          ])
-          return { ...card, frontProcessedSrc, backProcessedSrc }
-        }),
-      )
+      const exportCards = await getExportCards()
       const pdfBlob = await pdf(
         <PrintAndGlueDoc
           cards={exportCards}
@@ -1422,10 +1424,20 @@ function App() {
                     !hasCalibration(activeProfile) ||
                     isProjectControlsDisabled
                   }
+                  title={
+                    calibratedDownloadNeedsOffsets
+                      ? 'Set offsets in the calibration section to enable this.'
+                      : undefined
+                  }
                   onClick={() => handleDownloadDuplex('CALIBRATED')}
                 >
                   Download calibrated for {activeProfile.name}
                 </button>
+                {calibratedDownloadNeedsOffsets && (
+                  <span className="text-sm text-base-content/60">
+                    Set offsets in the calibration section to enable this.
+                  </span>
+                )}
               </>
             )}
             <button
