@@ -1171,9 +1171,6 @@ function App() {
           <section className="mb-6 space-y-4 rounded-box border border-base-300 bg-base-100 p-5">
             <div>
               <h2 className="text-lg font-semibold">Calibration</h2>
-              <p className="mt-2 text-sm text-base-content/70">
-                1. Print the sheet at Actual Size (100%, no Fit to Page). 2. Flip the paper on its LONG edge and print page 2 on the back; the BACK arrow should end up at the top. 3. Hold the sheet up to a light. Look from the FRONT side. 4. Measure how far the square marks sit from the circle marks, and enter it below. 5. Press Apply correction, then print the sheet again to confirm.
-              </p>
             </div>
 
             <div className="flex flex-wrap items-end gap-3">
@@ -1218,7 +1215,7 @@ function App() {
               </button>
             </div>
 
-            <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center justify-start gap-3">
               <p>
                 Current offset: X {calibrationNumberFormat.format(activeProfile.offsetXmm)} mm, Y{' '}
                 {calibrationNumberFormat.format(activeProfile.offsetYmm)} mm
