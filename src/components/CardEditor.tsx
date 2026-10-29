@@ -577,7 +577,9 @@ function SideCrop({
               showBleedRing={bleedMode === 'COLOR'}
               aspectIncludesBleed={bleedMode === 'IMAGE'}
               source={processedSource}
-              placeholder={side === 'front' ? 'Crop required' : 'No back'}
+              placeholder={
+                side === 'front' && source && !processedSource ? 'Crop required' : undefined
+              }
               alt={`${side} live crop result`}
             />
           </div>
@@ -590,7 +592,9 @@ function SideCrop({
             cardSize={cardSize}
             showBleedRing={bleedMode === 'COLOR'}
             aspectIncludesBleed={bleedMode === 'IMAGE'}
-            placeholder={side === 'front' ? 'Crop required' : 'No back'}
+            placeholder={
+              side === 'front' && source && !processedSource ? 'Crop required' : undefined
+            }
           />
         </div>
       )}
