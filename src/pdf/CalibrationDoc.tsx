@@ -9,6 +9,7 @@ import {
 import type { Grid, Calibration } from '../lib/layout.ts'
 import { calibrationMarks, type CalibrationMark } from '../lib/calibration.ts'
 import {
+  cornerLabelBoxes,
   cornerScaleTicks,
   fullWidthScaleTicks,
   scaleBandY,
@@ -183,13 +184,16 @@ function FullWidthScale({
   )
 }
 
-function CornerScale({ mark }: { mark: CalibrationMark }) {
+function CornerScale({
+  mark,
+  paper,
+}: {
+  mark: CalibrationMark
+  paper: Size
+}) {
   const ticks = cornerScaleTicks()
   const halfLength = mmToPt(5)
-  const isLeft = mark.x < 300
-  const isTop = mark.y < 400
-  const outerX = isLeft ? -1 : 1
-  const outerY = isTop ? -1 : 1
+  const labels = cornerLabelBoxes(mark, paper)
 
   return (
     <>
@@ -240,47 +244,26 @@ function CornerScale({ mark }: { mark: CalibrationMark }) {
                 backgroundColor: '#000000',
               }}
             />
-            {tick.label !== undefined && (
-              <>
-                <Text
-                  style={{
-                    position: 'absolute',
-                    left: mark.x + offsetPt - 3.5,
-                    top:
-                      mark.y +
-                      outerY * (6 + (Math.abs(tick.mm) % 2 === 0 ? 5 : 0)) -
-                      (outerY < 0 ? 5 : 0),
-                    width: 7,
-                    height: 5,
-                    fontSize: 5,
-                    textAlign: 'center',
-                    color: '#000000',
-                  }}
-                >
-                  {tick.label}
-                </Text>
-                <Text
-                  style={{
-                    position: 'absolute',
-                    left:
-                      mark.x +
-                      outerX * (6 + (Math.abs(tick.mm) % 2 === 0 ? 5 : 0)) -
-                      (outerX < 0 ? 7 : 0),
-                    top: mark.y + (tick.offsetPt ?? 0) - 2.5,
-                    width: 7,
-                    height: 5,
-                    fontSize: 5,
-                    textAlign: 'center',
-                    color: '#000000',
-                  }}
-                >
-                  {tick.label}
-                </Text>
-              </>
-            )}
           </Fragment>
         )
       })}
+      {labels.map((label, index) => (
+        <Text
+          key={`corner-label-${mark.x}-${mark.y}-${label.axis}-${index}`}
+          style={{
+            position: 'absolute',
+            left: label.left,
+            top: label.top,
+            width: label.width,
+            height: label.height,
+            fontSize: 5,
+            textAlign: 'center',
+            color: '#000000',
+          }}
+        >
+          {label.text}
+        </Text>
+      ))}
     </>
   )
 }
@@ -329,16 +312,17 @@ export default function CalibrationDoc({
       (grid.rows - 1) * grid.cellH +
       DEFAULT_BLEED +
       cardSize.height,
+    backOffsetY: calibration.offsetY,
   })
   const pages = [
     {
       side: 'front' as const,
-      label: 'FRONT ▲',
+      label: 'FRONT',
       marks: marks.front,
     },
     {
       side: 'back' as const,
-      label: 'BACK ▲',
+      label: 'BACK',
       marks: marks.back,
     },
   ]
@@ -382,7 +366,11 @@ export default function CalibrationDoc({
               ))}
             {side === 'front' &&
               pageMarks.map((mark, index) => (
-                <CornerScale key={`corner-scale-${index}`} mark={mark} />
+                <CornerScale
+                  key={`corner-scale-${index}`}
+                  mark={mark}
+                  paper={paper}
+                />
               ))}
             {pageMarks.map((mark, index) => (
               <CalibrationCrosshair key={`mark-${index}`} mark={mark} />

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  cornerLabelBoxes,
   cornerScaleTicks,
   estimatePrintScale,
   expectedScaleGapSpaces,
@@ -12,7 +13,9 @@ import {
   calculateTightGrid,
   CARD_PRESETS,
   DEFAULT_BLEED,
+  mmToPt,
   PAPER,
+  type Point,
 } from './geometry.ts'
 
 describe('fullWidthScaleTicks', () => {
@@ -49,6 +52,127 @@ describe('cornerScaleTicks', () => {
     expect(ticks[10]).toMatchObject({ mm: 0, offsetPt: 0, kind: 'major' })
     expect(ticks[10].label).toBeUndefined()
     expect(ticks[20]).toMatchObject({ mm: 5, offsetPt: 14.173, kind: 'mid', label: '5' })
+  })
+
+  function intersects(
+    first: { left: number; top: number; width: number; height: number },
+    second: { left: number; top: number; width: number; height: number },
+  ): boolean {
+    return (
+      first.left < second.left + second.width &&
+      first.left + first.width > second.left &&
+      first.top < second.top + second.height &&
+      first.top + first.height > second.top
+    )
+  }
+
+  function cornerTickLines(mark: Point): {
+    left: number
+    top: number
+    width: number
+    height: number
+  }[] {
+    const halfLength = mmToPt(5)
+    const ticks = cornerScaleTicks()
+
+    return [
+      { left: mark.x - halfLength, top: mark.y - 0.125, width: 2 * halfLength, height: 0.25 },
+      { left: mark.x - 0.125, top: mark.y - halfLength, width: 0.25, height: 2 * halfLength },
+      ...ticks.flatMap((tick) => {
+        const offsetPt = tick.offsetPt ?? 0
+        const length = tick.mm === 0 ? 4 : tick.kind === 'mid' ? 2.5 : 1.5
+
+        return [
+          {
+            left: mark.x + offsetPt - 0.125,
+            top: mark.y - length / 2,
+            width: 0.25,
+            height: length,
+          },
+          {
+            left: mark.x - length / 2,
+            top: mark.y + offsetPt - 0.125,
+            width: length,
+            height: 0.25,
+          },
+        ]
+      }),
+    ]
+  }
+
+  describe('cornerLabelBoxes', () => {
+    for (const [paperName, paper] of Object.entries(PAPER)) {
+      for (const isLeft of [true, false]) {
+        for (const isTop of [true, false]) {
+          it(`separates labels from ticks and trim lines for ${paperName} ${
+            isTop ? 'top' : 'bottom'
+          }-${isLeft ? 'left' : 'right'}`, () => {
+            const mark = {
+              x: paper.width * (isLeft ? 0.1 : 0.9),
+              y: paper.height * (isTop ? 0.1 : 0.9),
+            }
+            const labels = cornerLabelBoxes(mark, paper)
+            const tickLines = cornerTickLines(mark)
+            const trimLines = [
+              {
+                left: mark.x - 100,
+                top: mark.y - 0.125,
+                width: 200,
+                height: 0.25,
+              },
+              {
+                left: mark.x - 0.125,
+                top: mark.y - 100,
+                width: 0.25,
+                height: 200,
+              },
+            ]
+            const markCircle = {
+              left: mark.x - 3,
+              top: mark.y - 3,
+              width: 6,
+              height: 6,
+            }
+
+            expect(labels).toHaveLength(20)
+            for (let first = 0; first < labels.length; first += 1) {
+              expect(intersects(labels[first], markCircle)).toBe(false)
+              for (let second = first + 1; second < labels.length; second += 1) {
+                expect(intersects(labels[first], labels[second])).toBe(false)
+              }
+              for (const line of [...tickLines, ...trimLines]) {
+                expect(intersects(labels[first], line)).toBe(false)
+              }
+            }
+            expect(labels.filter(({ axis }) => axis === 'horizontal').map(({ text }) =>
+              text,
+            )).toEqual(['-5', '-4', '-3', '-2', '-1', '1', '2', '3', '4', '5'])
+            expect(labels.every(({ left, top, width, height }) =>
+              left >= 0 &&
+              top >= 0 &&
+              left + width <= paper.width &&
+              top + height <= paper.height,
+            )).toBe(true)
+          })
+        }
+      }
+
+      it(`uses paper-relative corner positions for ${paperName}`, () => {
+        const left = cornerLabelBoxes(
+          { x: paper.width / 2 - 1, y: paper.height / 2 - 1 },
+          paper,
+        )
+        const right = cornerLabelBoxes(
+          { x: paper.width / 2 + 1, y: paper.height / 2 + 1 },
+          paper,
+        )
+
+        expect(left.find(({ axis }) => axis === 'vertical')?.left).toBeGreaterThan(paper.width / 2)
+        expect(right.find(({ axis }) => axis === 'vertical')?.left).toBeLessThan(paper.width / 2)
+        expect(left.find(({ axis }) => axis === 'horizontal')?.top).toBeGreaterThan(paper.height / 2)
+        expect(right.find(({ axis }) => axis === 'horizontal')?.top).toBeLessThan(paper.height / 2)
+      })
+    }
   })
 
   it('labels integer ticks and leaves half-millimeter ticks unlabeled', () => {
@@ -114,11 +238,18 @@ describe('expectedScaleGapSpaces', () => {
 })
 
 describe('scaleBandY', () => {
-  const tightGridWithoutScale = new Set([
-    'LETTER POKER',
-    'LETTER MINI',
-    'A4 BRIDGE',
+  const gridsWithoutScale = new Set([
+    'LETTER POKER tight',
+    'LETTER MINI tight',
+    'A4 POKER tight',
+    'A4 BRIDGE tight',
+    'A4 MINI tight',
+    'A4 MINI regular',
   ])
+  const scaleTopOffset = 4
+  const scaleBottomOffset = 14
+  const edgeClearance = 17
+  const trimClearance = 6
 
   for (const [paperName, paper] of Object.entries(PAPER)) {
     for (const [presetName, card] of Object.entries(CARD_PRESETS)) {
@@ -142,16 +273,24 @@ describe('scaleBandY', () => {
             lastTrimBottomPt,
           })
 
-          const shouldSkip =
-            gridName === 'tight' && tightGridWithoutScale.has(`${paperName} ${presetName}`)
+          const shouldSkip = gridsWithoutScale.has(
+            `${paperName} ${presetName} ${gridName}`,
+          )
           expect(y === null).toBe(shouldSkip)
           if (y === null) return
+
+          expect(y - scaleTopOffset).toBeGreaterThanOrEqual(edgeClearance)
+          expect(paper.height - (y + scaleBottomOffset)).toBeGreaterThanOrEqual(
+            edgeClearance,
+          )
           if (y === 30) {
-            expect(y - 8).toBeGreaterThanOrEqual(22)
-            expect(y + 12 + 6).toBeLessThanOrEqual(firstTrimTopPt)
+            expect(y + scaleBottomOffset + trimClearance).toBeLessThanOrEqual(
+              firstTrimTopPt,
+            )
           } else {
-            expect(y - 8).toBeGreaterThanOrEqual(lastTrimBottomPt + 6)
-            expect(y + 12 + 6).toBeLessThanOrEqual(paper.height)
+            expect(y - scaleTopOffset).toBeGreaterThanOrEqual(
+              lastTrimBottomPt + trimClearance,
+            )
           }
         })
       }
@@ -166,5 +305,28 @@ describe('scaleBandY', () => {
         lastTrimBottomPt: 75,
       }),
     ).toBeNull()
+  })
+
+  it('keeps front and calibrated back scales clear of paper edges', () => {
+    const paper = PAPER.LETTER
+    const firstTrimTopPt = 135
+    const lastTrimBottomPt = 657
+
+    for (const backOffsetY of [-mmToPt(10), 0, mmToPt(10)]) {
+      const y = scaleBandY({
+        paperHeightPt: paper.height,
+        firstTrimTopPt,
+        lastTrimBottomPt,
+        backOffsetY,
+      })
+
+      expect(y).not.toBeNull()
+      for (const lineY of [y ?? 0, (y ?? 0) + backOffsetY]) {
+        expect(lineY - scaleTopOffset).toBeGreaterThanOrEqual(edgeClearance)
+        expect(paper.height - (lineY + scaleBottomOffset)).toBeGreaterThanOrEqual(
+          edgeClearance,
+        )
+      }
+    }
   })
 })
