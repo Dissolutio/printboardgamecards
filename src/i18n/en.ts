@@ -55,4 +55,13 @@ export const en: Catalog = {
     one: '{count} copy',
     other: '{count} copies',
   },
+  'printSummary.paper.LETTER': 'Letter',
+  'printSummary.paper.A4': 'A4',
+  'printSummary.mode.ONE_SIDE_GLUE': 'Print and glue.',
+  'printSummary.mode.TWO_SIDES_HAND': 'Double-sided printing for hand cutting.',
+  'printSummary.mode.TWO_SIDES_MACHINE': 'Double-sided printing for machine cutting.',
+  'printSummary.layout.landscape':
+    '{paper} paper. {mode} Cards turned to landscape, {columns} columns by {rows} rows.',
+  'printSummary.layout.portrait':
+    '{paper} paper. {mode} Cards turned to portrait, {columns} columns by {rows} rows.',
 }
