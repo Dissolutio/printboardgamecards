@@ -46,6 +46,7 @@ import {
   type PrinterProfiles,
 } from './lib/printerProfiles.ts'
 import { hasBackground } from './lib/piece.ts'
+import { planBackSync } from './lib/backSync.ts'
 import { parseMeasurement } from './lib/calibrationInput.ts'
 import {
   calibrationScaleY,
@@ -664,13 +665,106 @@ function App() {
     if (!currentCard) return
 
     const cropKey = side === 'front' ? 'frontCrop' : 'backCrop'
+    const processedKey = side === 'front' ? 'frontProcessedSrc' : 'backProcessedSrc'
     beginCardOperation(currentCard.id)
-    const nextCard = { ...currentCard, [cropKey]: crop }
+    const nextCard = { ...currentCard, [cropKey]: crop, [processedKey]: undefined }
     const nextCards = cardsRef.current.map((card) =>
       card.id === currentCard.id ? nextCard : card,
     )
     replaceCards(nextCards)
+    if (currentCard[processedKey]) {
+      revokeUnusedUrls([currentCard[processedKey]], nextCards)
+    }
     setErrors((current) => ({ ...current, [side]: undefined }))
+  }
+
+  async function handleUseBackForEveryCard() {
+    const originalCards = cardsRef.current
+    const selected = originalCards.find((card) => card.id === selectedId)
+    if (
+      !selected?.backSrc ||
+      !selected.backCrop ||
+      presetInProgress.current ||
+      projectOperationInProgress.current ||
+      isExporting ||
+      starterDeckOperationInProgress.current
+    ) {
+      return
+    }
+
+    const plan = planBackSync(selected, originalCards)
+    if (plan.cardsToUpdate.length === 0) return
+    if (
+      plan.needsConfirmation &&
+      !window.confirm('Replace the back of every other card with this back? This cannot be undone.')
+    ) {
+      return
+    }
+
+    const processedSource = selected.backProcessedSrc
+    if (!processedSource) {
+      setErrors((current) => ({
+        ...current,
+        back: 'Could not read the selected back image. Try again.',
+      }))
+      return
+    }
+
+    const tokens = new Map(
+      originalCards.map((card) => [card.id, beginCardOperation(card.id)]),
+    )
+    const presetForOperation = appliedPreset.current
+    const generatedUrls: string[] = []
+    const selectedBackCrop = { ...selected.backCrop }
+    try {
+      const response = await fetch(processedSource)
+      if (!response.ok) throw new Error('Could not read the selected back image.')
+      const processedBlob = await response.blob()
+      const nextCards = originalCards.map((card) => {
+        if (card.id === selected.id) return card
+        const nextProcessedSource = URL.createObjectURL(
+          new Blob([processedBlob], { type: processedBlob.type }),
+        )
+        generatedUrls.push(nextProcessedSource)
+        return {
+          ...card,
+          backSrc: selected.backSrc,
+          backCrop: { ...selectedBackCrop },
+          backIsVector: selected.backIsVector,
+          backProcessedSrc: nextProcessedSource,
+        }
+      })
+
+      if (
+        cardsRef.current !== originalCards ||
+        appliedPreset.current !== presetForOperation ||
+        originalCards.some(
+          (card) => {
+            const token = tokens.get(card.id)
+            return token === undefined || !isCurrentCardOperation(card.id, token)
+          },
+        )
+      ) {
+        generatedUrls.forEach(URL.revokeObjectURL)
+        return
+      }
+
+      replaceCards(nextCards)
+      revokeUnusedUrls(
+        plan.cardsToUpdate.flatMap((card) => [
+          card.backSrc,
+          card.backProcessedSrc,
+        ].filter((url): url is string => url !== undefined)),
+        nextCards,
+      )
+      setErrors((current) => ({ ...current, back: undefined }))
+    } catch {
+      generatedUrls.forEach(URL.revokeObjectURL)
+      setErrors((current) => ({
+        ...current,
+        back: 'Could not read the selected back image. Try again.',
+      }))
+    }
   }
 
   function handleProcessedImage(side: CardSide, blob: Blob) {
@@ -1058,21 +1152,21 @@ function App() {
   }: {
     includeJokers: boolean
     back: StarterBackChoice
-  }) {
+  }): Promise<boolean> {
     if (
       starterDeckOperationInProgress.current ||
       presetInProgress.current ||
       projectOperationInProgress.current ||
       isExporting
     ) {
-      return
+      return false
     }
 
     if (
       needsStarterDeckReplacementConfirmation(cardsRef.current) &&
       !window.confirm('Replace the current deck with a new standard deck? This cannot be undone.')
     ) {
-      return
+      return false
     }
 
     const generation = ++starterDeckGeneration.current
@@ -1085,6 +1179,7 @@ function App() {
     setStarterDeckError(undefined)
     setStarterDeckProgress(undefined)
     setExportError(undefined)
+    let created = false
     for (const card of originalCards) beginCardOperation(card.id)
 
     try {
@@ -1115,8 +1210,17 @@ function App() {
       }
 
       let backSrc: string
+      let backCrop: PixelCropRect | undefined
+      let backProcessedBlob: Blob | undefined
+      let backIsVector: boolean
       if (back.type === 'image') {
+        if (!back.draftCard.backCrop) {
+          throw new Error('Choose and crop a back image before creating the deck.')
+        }
         backSrc = await fileToDataUrl(back.file)
+        backCrop = { ...back.draftCard.backCrop }
+        backProcessedBlob = back.processedBlob
+        backIsVector = back.draftCard.backIsVector ?? false
       } else {
         const design = BACK_DESIGNS.find((option) => option.id === back.design)
         const palette = BACK_PALETTES.find((option) => option.id === back.paletteId)
@@ -1134,6 +1238,7 @@ function App() {
             border: back.border,
           }),
         )
+        backIsVector = true
       }
 
       const newCards = buildStarterCards({
@@ -1145,7 +1250,8 @@ function App() {
       }).map((card) => ({
         ...card,
         frontIsVector: isSvgUrl(card.frontSrc ?? ''),
-        backIsVector: isSvgUrl(backSrc),
+        backIsVector,
+        ...(backCrop ? { backCrop: { ...backCrop } } : {}),
       }))
       if (newCards.length !== (includeJokers ? 54 : 52)) {
         throw new Error('The standard deck data is invalid. Reload the page and try again.')
@@ -1154,29 +1260,41 @@ function App() {
         newCards,
         4,
         async (card) => {
-          let processedCard: Card = card
-          for (const side of SIDES) {
-            const result = await prepareSideCrop(
+          const result = await prepareSideCrop(card, 'front', cardSize, 'COLOR', false)
+          if (!result) throw new Error('Could not process a card image.')
+          const processedSource = URL.createObjectURL(result.blob)
+          generatedUrls.push(processedSource)
+          let processedCard = withSideCrop(card, 'front', result.crop, processedSource)
+          if (!backProcessedBlob) {
+            const backResult = await prepareSideCrop(
               processedCard,
-              side,
+              'back',
               cardSize,
               'COLOR',
               false,
             )
-            if (!result) throw new Error('Could not process a card image.')
-            const processedSource = URL.createObjectURL(result.blob)
-            generatedUrls.push(processedSource)
+            if (!backResult) throw new Error('Could not process a card image.')
+            const backProcessedSource = URL.createObjectURL(backResult.blob)
+            generatedUrls.push(backProcessedSource)
             processedCard = withSideCrop(
               processedCard,
-              side,
-              result.crop,
-              processedSource,
+              'back',
+              backResult.crop,
+              backProcessedSource,
             )
           }
           return processedCard
         },
         (done, total) => setStarterDeckProgress({ done, total }),
       )
+      const completedCards = processedCards.map((card) => {
+        if (!backProcessedBlob) return card
+        const backProcessedSrc = URL.createObjectURL(
+          new Blob([backProcessedBlob], { type: backProcessedBlob.type }),
+        )
+        generatedUrls.push(backProcessedSrc)
+        return { ...card, backProcessedSrc }
+      })
 
       if (
         generation !== starterDeckGeneration.current ||
@@ -1188,15 +1306,16 @@ function App() {
             'The deck changed while creating the standard deck. Please try again.',
           )
         }
-        return
+        return false
       }
 
       for (const card of originalCards) beginCardOperation(card.id)
-      replaceCards(processedCards)
-      setSelectedId(processedCards[0].id)
+      replaceCards(completedCards)
+      setSelectedId(completedCards[0].id)
       setErrors({ front: undefined, back: undefined })
-      revokeUnusedUrls(originalCards.flatMap(objectUrls), processedCards)
+      revokeUnusedUrls(originalCards.flatMap(objectUrls), completedCards)
       setExportError(undefined)
+      created = true
     } catch (error) {
       generatedUrls.forEach(URL.revokeObjectURL)
       const message = error instanceof Error ? error.message : ''
@@ -1217,6 +1336,7 @@ function App() {
         setIsChangingPreset(false)
       }
     }
+    return created
   }
 
   async function getExportCards() {
@@ -1345,6 +1465,7 @@ function App() {
 
         <StarterDeckPanel
           cardSize={cardSize}
+          paperName={paperName}
           disabled={isProjectControlsDisabled}
           isLoadingManifest={isLoadingStarterManifest}
           isProcessing={isCreatingStarterDeck}
@@ -1933,6 +2054,7 @@ function App() {
               onCropChange={handleCropChange}
               onProcessedImage={handleProcessedImage}
               onError={handleError}
+              onUseBackForEveryCard={handleUseBackForEveryCard}
             />
           </section>
         ) : (
