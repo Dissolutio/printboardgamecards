@@ -64,6 +64,7 @@ Do not ask for single-card edits. Those save as you work.
 
 ## Behavior notes
 
+- Print and glue prints fronts and backs as separate pieces, so 52 cards make 104 pieces. At 8 pieces per page that is 13 pages, the same paper as two-sided printing. Say 'pieces' and 'pages' honestly; never claim fewest pages. Numbers come from `summarizePrint`. Mockup numbers for that mode ("7 pages", "8 cards per page") are placeholders.
 - Numbers on the summary strip and the "This print job" table come from the real layout functions (`calculateGrid`, `calculateTightGrid`), never typed in.
 - The preview uses the same layout as the PDF.
 - The project saves on this device as you work (IndexedDB). A "Saved on this device at 12:04" line shows the last save time.
