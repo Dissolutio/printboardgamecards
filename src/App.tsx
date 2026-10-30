@@ -1,8 +1,12 @@
 import { useEffect, useRef, useState, type ChangeEvent } from 'react'
 import { pdf } from '@react-pdf/renderer'
 import CardEditor from './components/CardEditor.tsx'
-import CardFace from './components/CardFace.tsx'
+import CardList from './components/CardList.tsx'
+import ExportPanel from './components/ExportPanel.tsx'
+import PrintSettingsPanel from './components/PrintSettingsPanel.tsx'
+import PrintPreview from './components/PrintPreview.tsx'
 import StarterDeckPanel, { type StarterBackChoice } from './components/StarterDeckPanel.tsx'
+import { usePrinterProfiles } from './hooks/usePrinterProfiles.ts'
 import CalibrationDoc from './pdf/CalibrationDoc.tsx'
 import DuplexDoc from './pdf/DuplexDoc.tsx'
 import PrintAndGlueDoc from './pdf/PrintAndGlueDoc.tsx'
@@ -10,10 +14,19 @@ import {
   addCard,
   deleteCard,
   duplicateCard,
-  quantityLabel,
   stepQuantity,
-  totalCopies,
 } from './lib/deck.ts'
+import {
+  createCard,
+  downloadBlob,
+  estimatedScaleMessage,
+  expectedScaleTotalMessage,
+  objectUrls,
+  sideCrop,
+  sideProcessedSource,
+  sideSource,
+  withSideCrop,
+} from './lib/cardOps.ts'
 import {
   calculateGrid,
   calculateTightGrid,
@@ -26,31 +39,14 @@ import {
 import { cropAreaSize } from './lib/crop.ts'
 import { centeredMaximumCrop, convertCropForBleedMode } from './lib/cropConvert.ts'
 import {
-  addCalibration,
-  calibrationFromObserved,
-  clampCalibration,
-  type CalibrationMm,
-} from './lib/calibration.ts'
-import {
-  addProfile,
-  deleteProfile,
   duplexPdfFilename,
   exportCalibrationPt,
   hasCalibration,
-  loadPrinterProfiles,
-  renameProfile,
-  savePrinterProfiles,
-  selectProfile,
-  updateActiveOffsets,
   type ExportKind,
-  type PrinterProfiles,
 } from './lib/printerProfiles.ts'
-import { hasBackground } from './lib/piece.ts'
 import { planBackSync } from './lib/backSync.ts'
 import { parseMeasurement } from './lib/calibrationInput.ts'
 import {
-  calibrationScaleY,
-  estimatePrintScale,
   expectedScaleGapSpaces,
   SHEET_WIDTH_MM,
 } from './lib/calibrationScale.ts'
@@ -81,118 +77,17 @@ import type { BleedMode, Card, CardSide, PixelCropRect } from './types.ts'
 
 const SIDES: CardSide[] = ['front', 'back']
 const PAPER_OPTIONS: (keyof typeof PAPER)[] = ['LETTER', 'A4']
-const ZERO_CALIBRATION_MM: CalibrationMm = { offsetXmm: 0, offsetYmm: 0 }
 const calibrationNumberFormat = new Intl.NumberFormat(undefined, {
   minimumFractionDigits: 2,
   maximumFractionDigits: 2,
 })
-const scaleGapFormat = new Intl.NumberFormat(undefined, {
-  maximumFractionDigits: 1,
-})
-const scalePercentFormat = new Intl.NumberFormat(undefined, {
-  style: 'percent',
-  minimumFractionDigits: 1,
-  maximumFractionDigits: 1,
-})
-
 type PaperName = keyof typeof PAPER
 type PresetName = keyof typeof CARD_PRESETS
 type ExportMode = 'PRINT_GLUE' | 'DUPLEX'
 type QuantityDirection = -1 | 1
 
-function expectedScaleTotalMessage(value: number): string {
-  return `The expected total is ${scaleGapFormat.format(value)}.`
-}
-
-function estimatedScaleMessage(value: number): string {
-  return `Estimated printer scale is ${scalePercentFormat.format(value)}.`
-}
-
-type QuantityStepperProps = {
-  quantity: number
-  cardLabel: string
-  disabled?: boolean
-  onStep: (direction: QuantityDirection) => void
-}
-
-function QuantityStepper({ quantity, cardLabel, disabled = false, onStep }: QuantityStepperProps) {
-  return (
-    <div className="join join-sm" role="group" aria-label={`${cardLabel} copy count`}>
-      <button
-        className="btn btn-xs join-item"
-        type="button"
-        disabled={disabled}
-        aria-label={`Decrease ${cardLabel} copies`}
-        title={`Decrease ${cardLabel} copies`}
-        onClick={() => onStep(-1)}
-      >
-        −
-      </button>
-      <output
-        className="join-item min-w-14 px-2 text-center text-xs"
-        aria-label={quantityLabel(quantity)}
-      >
-        {quantityLabel(quantity)}
-      </output>
-      <button
-        className="btn btn-xs join-item"
-        type="button"
-        disabled={disabled}
-        aria-label={`Increase ${cardLabel} copies`}
-        title={`Increase ${cardLabel} copies`}
-        onClick={() => onStep(1)}
-      >
-        +
-      </button>
-    </div>
-  )
-}
-
 function isPresetName(value: string): value is PresetName {
   return Object.prototype.hasOwnProperty.call(CARD_PRESETS, value)
-}
-
-function createCard(id: string, previous?: Card): Card {
-  return {
-    id,
-    bleedMode: previous?.bleedMode ?? 'IMAGE',
-    frontBackground: previous?.frontBackground ?? { enabled: false, color: '#ffffff' },
-    backBackground: previous?.backBackground ?? { enabled: false, color: '#ffffff' },
-    bleedColor: previous?.bleedColor ?? '#ffffff',
-    quantity: 1,
-  }
-}
-
-function objectUrls(card: Card): string[] {
-  return [
-    card.frontSrc,
-    card.backSrc,
-    card.frontProcessedSrc,
-    card.backProcessedSrc,
-  ].filter((url): url is string => url !== undefined && url.startsWith('blob:'))
-}
-
-function sideSource(card: Card, side: CardSide): string | undefined {
-  return side === 'front' ? card.frontSrc : card.backSrc
-}
-
-function sideCrop(card: Card, side: CardSide): PixelCropRect | undefined {
-  return side === 'front' ? card.frontCrop : card.backCrop
-}
-
-function sideProcessedSource(card: Card, side: CardSide): string | undefined {
-  return side === 'front' ? card.frontProcessedSrc : card.backProcessedSrc
-}
-
-function withSideCrop(
-  card: Card,
-  side: CardSide,
-  crop: PixelCropRect | undefined,
-  processedSource: string | undefined,
-): Card {
-  return side === 'front'
-    ? { ...card, frontCrop: crop, frontProcessedSrc: processedSource }
-    : { ...card, backCrop: crop, backProcessedSrc: processedSource }
 }
 
 async function prepareSideCrop(
@@ -272,21 +167,6 @@ async function dataUrlToBlobUrl(url: string): Promise<string> {
   return URL.createObjectURL(await response.blob())
 }
 
-function downloadBlob(blob: Blob, filename: string) {
-  const downloadUrl = URL.createObjectURL(blob)
-
-  try {
-    const link = document.createElement('a')
-    link.href = downloadUrl
-    link.download = filename
-    document.body.appendChild(link)
-    link.click()
-    link.remove()
-  } finally {
-    window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000)
-  }
-}
-
 function App() {
   const [cards, setCards] = useState<Card[]>(() => [createCard('card-1')])
   const cardsRef = useRef(cards)
@@ -312,20 +192,6 @@ function App() {
   const [paperName, setPaperName] = useState<PaperName>('LETTER')
   const [exportMode, setExportMode] = useState<ExportMode>('PRINT_GLUE')
   const [pieceOrientation, setPieceOrientation] = useState<PieceOrientation>('AUTO')
-  const [printerProfiles, setPrinterProfiles] =
-    useState<PrinterProfiles>(loadPrinterProfiles)
-  const activeProfile =
-    printerProfiles.profiles.find(({ id }) => id === printerProfiles.activeId) ??
-    printerProfiles.profiles[0]
-  const [calibrationDraft, setCalibrationDraft] = useState({
-    offsetXmm: activeProfile.offsetXmm.toFixed(2),
-    offsetYmm: activeProfile.offsetYmm.toFixed(2),
-  })
-  const [observedXmm, setObservedXmm] = useState('')
-  const [observedYmm, setObservedYmm] = useState('')
-  const [scaleGapInput, setScaleGapInput] = useState('')
-  const [calibrationUpdated, setCalibrationUpdated] = useState(false)
-  const [calibrationStorageWarning, setCalibrationStorageWarning] = useState<string>()
   const [isExporting, setIsExporting] = useState(false)
   const [exportError, setExportError] = useState<string>()
   const [errors, setErrors] = useState<Record<CardSide, string | undefined>>({
@@ -341,18 +207,33 @@ function App() {
     card: cardSize,
     orientation: pieceOrientation,
   })
-  const calibrationPt = exportCalibrationPt('CALIBRATED', activeProfile)
-  const hasCalibrationScale =
-    calibrationScaleY({ paper, grid, cardSize, backOffsetY: calibrationPt.offsetY }) !== null
-  const scaleGapValue = parseMeasurement(scaleGapInput)
-  const validScaleGap = scaleGapValue !== undefined && scaleGapValue >= 0
-  const scaleEstimate =
-    scaleGapValue !== undefined && scaleGapValue >= 0
-      ? estimatePrintScale({
-          sheetWidthMm: SHEET_WIDTH_MM[paperName],
-          gapSpaces: scaleGapValue,
-        })
-      : undefined
+  const printer = usePrinterProfiles({ paper, paperName, grid, cardSize })
+  const {
+    printerProfiles,
+    activeProfile,
+    calibrationDraft,
+    setCalibrationDraft,
+    observedXmm,
+    setObservedXmm,
+    observedYmm,
+    setObservedYmm,
+    scaleGapInput,
+    setScaleGapInput,
+    calibrationUpdated,
+    setCalibrationUpdated,
+    calibrationStorageWarning,
+    calibrationPt,
+    hasCalibrationScale,
+    validScaleGap,
+    scaleEstimate,
+    commitCalibrationAxis,
+    resetCalibration,
+    applyObservedCorrection,
+    handleSelectPrinter,
+    handleAddPrinter,
+    handleRenamePrinter,
+    handleDeletePrinter,
+  } = printer
   const selectedCard = cards.find((card) => card.id === selectedId)
   const isProjectControlsDisabled =
     isChangingPreset || isSavingProject || isLoadingProject || isExporting || isCreatingStarterDeck
@@ -399,120 +280,6 @@ function App() {
       ...currentCard,
       quantity: stepQuantity(currentCard.quantity, direction),
     })
-  }
-
-  function persistPrinterProfiles(nextProfiles: PrinterProfiles) {
-    setPrinterProfiles(nextProfiles)
-    setCalibrationStorageWarning(
-      savePrinterProfiles(nextProfiles)
-        ? undefined
-        : 'Calibration changes could not be saved; reloading may lose them.',
-    )
-  }
-
-  function syncCalibrationDraft(profile: PrinterProfiles['profiles'][number]) {
-    setCalibrationDraft({
-      offsetXmm: profile.offsetXmm.toFixed(2),
-      offsetYmm: profile.offsetYmm.toFixed(2),
-    })
-  }
-
-  function persistActiveCalibration(nextCalibration: CalibrationMm) {
-    const nextProfiles = updateActiveOffsets(printerProfiles, nextCalibration)
-    const nextProfile =
-      nextProfiles.profiles.find(({ id }) => id === nextProfiles.activeId) ??
-      nextProfiles.profiles[0]
-    persistPrinterProfiles(nextProfiles)
-    syncCalibrationDraft(nextProfile)
-  }
-
-  function commitCalibrationAxis(axis: keyof CalibrationMm) {
-    const input = calibrationDraft[axis]
-    const value = input.trim() === '' ? Number.NaN : Number(input)
-    if (!Number.isFinite(value)) {
-      setCalibrationDraft((current) => ({
-        ...current,
-        [axis]: activeProfile[axis].toFixed(2),
-      }))
-      return
-    }
-    persistActiveCalibration({ ...activeProfile, [axis]: value })
-  }
-
-  function resetCalibration() {
-    persistActiveCalibration(ZERO_CALIBRATION_MM)
-    setCalibrationUpdated(false)
-  }
-
-  function applyObservedCorrection() {
-    const currentCalibration = clampCalibration({
-      offsetXmm:
-        calibrationDraft.offsetXmm.trim() === ''
-          ? activeProfile.offsetXmm
-          : Number(calibrationDraft.offsetXmm),
-      offsetYmm:
-        calibrationDraft.offsetYmm.trim() === ''
-          ? activeProfile.offsetYmm
-          : Number(calibrationDraft.offsetYmm),
-    })
-    const observationX = parseMeasurement(observedXmm)
-    const observationY = parseMeasurement(observedYmm)
-    if (observationX === undefined || observationY === undefined) return
-
-    const nextCalibration = clampCalibration(
-      addCalibration(
-        currentCalibration,
-        calibrationFromObserved(observationX, observationY),
-      ),
-    )
-    persistActiveCalibration(nextCalibration)
-    setObservedXmm('')
-    setObservedYmm('')
-    setCalibrationUpdated(true)
-  }
-
-  function handleSelectPrinter(id: string) {
-    const nextProfiles = selectProfile(printerProfiles, id)
-    const nextProfile =
-      nextProfiles.profiles.find(({ id: profileId }) => profileId === nextProfiles.activeId) ??
-      nextProfiles.profiles[0]
-    persistPrinterProfiles(nextProfiles)
-    syncCalibrationDraft(nextProfile)
-    setCalibrationUpdated(false)
-  }
-
-  function handleAddPrinter() {
-    const name = window.prompt('New printer name', `Printer ${printerProfiles.profiles.length + 1}`)
-    if (name === null) return
-    const nextProfiles = addProfile(printerProfiles, name)
-    if (nextProfiles === printerProfiles) return
-    persistPrinterProfiles(nextProfiles)
-    syncCalibrationDraft(nextProfiles.profiles[nextProfiles.profiles.length - 1])
-    setCalibrationUpdated(false)
-  }
-
-  function handleRenamePrinter() {
-    const name = window.prompt('Rename printer', activeProfile.name)
-    if (name === null) return
-    persistPrinterProfiles(renameProfile(printerProfiles, activeProfile.id, name))
-  }
-
-  function handleDeletePrinter() {
-    if (
-      !window.confirm(
-        `Delete "${activeProfile.name}" (X ${activeProfile.offsetXmm >= 0 ? '+' : ''}${activeProfile.offsetXmm.toFixed(2)} mm, Y ${activeProfile.offsetYmm >= 0 ? '+' : ''}${activeProfile.offsetYmm.toFixed(2)} mm)? This cannot be undone.`,
-      )
-    ) {
-      return
-    }
-
-    const nextProfiles = deleteProfile(printerProfiles, activeProfile.id)
-    const nextProfile =
-      nextProfiles.profiles.find(({ id }) => id === nextProfiles.activeId) ??
-      nextProfiles.profiles[0]
-    persistPrinterProfiles(nextProfiles)
-    syncCalibrationDraft(nextProfile)
-    setCalibrationUpdated(false)
   }
 
   function beginCardOperation(cardId: string): number {
@@ -1475,86 +1242,29 @@ function App() {
         />
 
         <div inert={isProjectControlsDisabled}>
-        <section className="mb-6 rounded-box border border-base-300 bg-base-100 p-5">
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            <label className="form-control">
-              <span className="label-text mb-1">Card preset</span>
-              <select
-                className="select select-bordered w-full"
-                value={presetName}
-                disabled={isProjectControlsDisabled}
-                onChange={(event) => {
-                  const value = event.currentTarget.value
-                  if (isPresetName(value)) handlePresetChange(value)
-                }}
-              >
-                {Object.keys(CARD_PRESETS).map((name) => (
-                  <option key={name} value={name}>
-                    {name.charAt(0) + name.slice(1).toLowerCase()}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="form-control">
-              <span className="label-text mb-1">Paper size</span>
-              <select
-                className="select select-bordered w-full"
-                value={paperName}
-                disabled={isProjectControlsDisabled}
-                onChange={(event) => {
-                  const selectedPaper = PAPER_OPTIONS.find(
-                    (option) => option === event.currentTarget.value,
-                  )
-                  if (selectedPaper) setPaperName(selectedPaper)
-                }}
-              >
-                {PAPER_OPTIONS.map((option) => (
-                  <option key={option} value={option}>
-                    {option === 'LETTER' ? 'Letter' : 'A4'}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="form-control">
-              <span className="label-text mb-1">Print mode</span>
-              <select
-                className="select select-bordered w-full"
-                value={exportMode}
-                disabled={isProjectControlsDisabled}
-                onChange={(event) =>
-                  setExportMode(
-                    event.currentTarget.value === 'DUPLEX' ? 'DUPLEX' : 'PRINT_GLUE',
-                  )
-                }
-              >
-                <option value="PRINT_GLUE">Single-sided (print, cut, glue)</option>
-                <option value="DUPLEX">Double-sided hand-cut</option>
-              </select>
-            </label>
-            {exportMode === 'PRINT_GLUE' && (
-              <label className="form-control">
-                <span className="label-text mb-1">Piece orientation</span>
-                <select
-                  className="select select-bordered w-full"
-                  value={pieceOrientation}
-                  disabled={isLoadingProject}
-                  onChange={(event) =>
-                    setPieceOrientation(
-                      event.currentTarget.value === 'UPRIGHT' ||
-                        event.currentTarget.value === 'ROTATED'
-                        ? event.currentTarget.value
-                        : 'AUTO',
-                    )
-                  }
-                >
-                  <option value="AUTO">Auto</option>
-                  <option value="UPRIGHT">Upright</option>
-                  <option value="ROTATED">Rotated</option>
-                </select>
-              </label>
-            )}
-          </div>
-        </section>
+        <PrintSettingsPanel
+          presetName={presetName}
+          paperName={paperName}
+          exportMode={exportMode}
+          pieceOrientation={pieceOrientation}
+          disabled={isProjectControlsDisabled}
+          loadingProject={isLoadingProject}
+          onPresetChange={(value) => {
+            if (isPresetName(value)) handlePresetChange(value)
+          }}
+          onPaperChange={(value) => {
+            const selectedPaper = PAPER_OPTIONS.find((option) => option === value)
+            if (selectedPaper) setPaperName(selectedPaper)
+          }}
+          onExportModeChange={(value) =>
+            setExportMode(value === 'DUPLEX' ? 'DUPLEX' : 'PRINT_GLUE')
+          }
+          onPieceOrientationChange={(value) =>
+            setPieceOrientation(
+              value === 'UPRIGHT' || value === 'ROTATED' ? value : 'AUTO',
+            )
+          }
+        />
 
         {exportMode === 'DUPLEX' && (
           <section className="mb-6 space-y-4 rounded-box border border-base-300 bg-base-100 p-5">
@@ -1858,186 +1568,38 @@ function App() {
           </section>
         )}
 
-        <section className="mb-6 rounded-box border border-base-300 bg-base-100 p-5">
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <h2 className="text-lg font-semibold">Cards</h2>
-            <button
-              className="btn btn-outline btn-primary"
-              type="button"
-              disabled={isProjectControlsDisabled}
-              onClick={handleAddCard}
-            >
-              + Add card
-            </button>
-          </div>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {cards.map((card, index) => (
-              <article
-                key={card.id}
-                className={`rounded-box border p-3 ${card.id === selectedId ? 'border-primary' : 'border-base-300'}`}
-              >
-                <button
-                  className="flex w-full items-center gap-3 text-left"
-                  type="button"
-                  aria-pressed={card.id === selectedId}
-                  disabled={isProjectControlsDisabled}
-                  onClick={() => {
-                    setSelectedId(card.id)
-                    setErrors({ front: undefined, back: undefined })
-                  }}
-                >
-                  <span className="grid w-28 shrink-0 grid-cols-2 gap-1">
-                    {SIDES.map((side) => (
-                      <CardFace
-                        key={side}
-                        card={card}
-                        side={side}
-                        cardSize={cardSize}
-                        showBleedRing={card.bleedMode === 'COLOR'}
-                        source={side === 'front' ? card.frontProcessedSrc : card.backProcessedSrc}
-                        alt={`Card ${index + 1} ${side} thumbnail`}
-                      />
-                    ))}
-                  </span>
-                  <span className="min-w-0">
-                    <span className="block font-medium">Card {index + 1}</span>
-                  </span>
-                </button>
-                <div className="mt-2 flex justify-end">
-                  <QuantityStepper
-                    quantity={card.quantity}
-                    cardLabel={`Card ${index + 1}`}
-                    disabled={isProjectControlsDisabled}
-                    onStep={(direction) => handleQuantityStep(card.id, direction)}
-                  />
-                </div>
-                  {!card.frontSrc ? (
-                    <p className="mt-2 text-sm text-warning">
-                      This card has no front image. It will be skipped during export.
-                    </p>
-                  ) : (!card.frontProcessedSrc || !card.frontCrop) && (
-                    <p className="mt-2 text-sm text-warning">
-                      Front crop required; this card will be skipped during export.
-                    </p>
-                  )}
-                  {!card.backSrc && !hasBackground(card, 'back') && (
-                    <p className="mt-2 text-sm text-warning">
-                      This card has no back image and no back background. No back will be printed.
-                    </p>
-                  )}
-                <div className="mt-3 flex gap-2">
-                  <button
-                    className="btn btn-sm btn-outline flex-1"
-                    type="button"
-                    disabled={isProjectControlsDisabled}
-                    onClick={() => handleDuplicateCard(card.id)}
-                  >
-                    Duplicate
-                  </button>
-                  <button
-                    className="btn btn-sm btn-outline btn-error flex-1"
-                    type="button"
-                    disabled={isProjectControlsDisabled}
-                    onClick={() => handleDeleteCard(card.id)}
-                  >
-                    Delete
-                  </button>
-                </div>
-              </article>
-            ))}
-          </div>
-        </section>
+        <CardList
+          cards={cards}
+          selectedId={selectedId}
+          cardSize={cardSize}
+          disabled={isProjectControlsDisabled}
+          onAdd={handleAddCard}
+          onSelect={(cardId) => {
+            setSelectedId(cardId)
+            setErrors({ front: undefined, back: undefined })
+          }}
+          onQuantityStep={handleQuantityStep}
+          onDuplicate={handleDuplicateCard}
+          onDelete={handleDeleteCard}
+        />
 
-        <section className="mb-6 flex flex-wrap items-center justify-between gap-4 rounded-box border border-base-300 bg-base-100 p-5">
-          <div className="flex flex-wrap items-center gap-4">
-            <p className="text-sm text-base-content/60">
-              {pageCount} {exportMode === 'DUPLEX' ? 'page pair' : 'page'}
-              {pageCount === 1 ? '' : 's'} · {totalCopies(cards)} total copies
-            </p>
-            {exportMode === 'PRINT_GLUE' ? (
-              <button
-                className="btn btn-primary"
-                type="button"
-                disabled={pageCount === 0 || isProjectControlsDisabled}
-                onClick={handleDownload}
-              >
-                {isExporting ? 'Preparing PDF…' : 'Download PDF'}
-              </button>
-            ) : (
-              <>
-                <button
-                  className="btn btn-primary"
-                  type="button"
-                  disabled={pageCount === 0 || isProjectControlsDisabled}
-                  onClick={() => handleDownloadDuplex('ORIGINAL')}
-                >
-                  {isExporting ? 'Preparing PDF…' : 'Download PDF (original, shareable)'}
-                </button>
-                <button
-                  className="btn btn-outline"
-                  type="button"
-                  disabled={
-                    pageCount === 0 ||
-                    !hasCalibration(activeProfile) ||
-                    isProjectControlsDisabled
-                  }
-                  title={
-                    calibratedDownloadNeedsOffsets
-                      ? 'Set offsets in the calibration section to enable this.'
-                      : undefined
-                  }
-                  onClick={() => handleDownloadDuplex('CALIBRATED')}
-                >
-                  Download calibrated for {activeProfile.name}
-                </button>
-                {calibratedDownloadNeedsOffsets && (
-                  <span className="text-sm text-base-content/60">
-                    Set offsets in the calibration section to enable this.
-                  </span>
-                )}
-              </>
-            )}
-            <button
-              className="btn btn-outline"
-              type="button"
-              disabled={isProjectControlsDisabled}
-              onClick={handleSaveProject}
-            >
-              {isSavingProject ? 'Saving…' : 'Save project'}
-            </button>
-            <button
-              className="btn btn-outline"
-              type="button"
-              disabled={isProjectControlsDisabled}
-              onClick={() => projectFileInput.current?.click()}
-            >
-              {isLoadingProject ? 'Loading...' : 'Load project'}
-            </button>
-            <input
-              ref={projectFileInput}
-              className="hidden"
-              type="file"
-              accept=".json,application/json"
-              disabled={isProjectControlsDisabled}
-              onChange={handleLoadProject}
-            />
-          </div>
-          {exportMode === 'DUPLEX' && (
-            <p className="w-full text-sm text-base-content/70">
-              Calibrated files only work on the printer they were measured on. Share the original.
-            </p>
-          )}
-          <p className="max-w-2xl text-sm font-medium text-warning">
-            {exportMode === 'DUPLEX'
-              ? 'Print at Actual Size. Flip on Long Edge. If printing by hand: print page 1, reload the sheet flipped on its long edge, then print page 2.'
-              : 'Print at Actual Size / 100% scale. Do not use Fit to Page.'}
-          </p>
-          {exportError && (
-            <p role="alert" className="w-full text-sm text-error">
-              {exportError}
-            </p>
-          )}
-        </section>
+        <ExportPanel
+          cards={cards}
+          pageCount={pageCount}
+          exportMode={exportMode}
+          activeProfile={activeProfile}
+          calibratedDownloadNeedsOffsets={calibratedDownloadNeedsOffsets}
+          disabled={isProjectControlsDisabled}
+          isExporting={isExporting}
+          isSavingProject={isSavingProject}
+          isLoadingProject={isLoadingProject}
+          exportError={exportError}
+          projectFileInput={projectFileInput}
+          onDownload={handleDownload}
+          onDownloadDuplex={handleDownloadDuplex}
+          onSaveProject={handleSaveProject}
+          onLoadProject={handleLoadProject}
+        />
 
         {selectedCard ? (
           <section className="mb-6">
@@ -2063,52 +1625,12 @@ function App() {
           </p>
         )}
 
-        <section className="rounded-box border border-base-300 bg-base-100 p-5">
-          <h2 className="mb-4 text-lg font-semibold">Print preview</h2>
-          {cards.length === 0 ? (
-            <p className="text-sm text-base-content/60">No cards in this deck.</p>
-          ) : (
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {cards.map((card, index) => (
-                <article key={card.id} className="rounded-box border border-base-300 p-3">
-                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                    <h3 className="font-medium">Card {index + 1}</h3>
-                    <QuantityStepper
-                      quantity={card.quantity}
-                      cardLabel={`Card ${index + 1}`}
-                      disabled={isProjectControlsDisabled}
-                      onStep={(direction) => handleQuantityStep(card.id, direction)}
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    {SIDES.map((side) => {
-                      const source =
-                        side === 'front' ? card.frontProcessedSrc : card.backProcessedSrc
-                      return (
-                        <div key={side}>
-                          <p className="mb-1 text-xs capitalize text-base-content/60">{side}</p>
-                          <CardFace
-                            card={card}
-                            side={side}
-                            cardSize={cardSize}
-                            showBleedRing={card.bleedMode === 'COLOR'}
-                            source={source}
-                            placeholder={
-                              side === 'front' && card.frontSrc && !card.frontProcessedSrc
-                                ? 'Crop required'
-                                : undefined
-                            }
-                            alt={`Card ${index + 1} ${side} print preview`}
-                          />
-                        </div>
-                      )
-                    })}
-                  </div>
-                </article>
-              ))}
-            </div>
-          )}
-        </section>
+        <PrintPreview
+          cards={cards}
+          cardSize={cardSize}
+          disabled={isProjectControlsDisabled}
+          onQuantityStep={handleQuantityStep}
+        />
         </div>
         <footer className="mt-8 text-center text-xs text-base-content/50">
           <a
