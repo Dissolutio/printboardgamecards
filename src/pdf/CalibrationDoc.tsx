@@ -1,5 +1,5 @@
 import { Fragment } from 'react'
-import { Document, Page, Text, View } from '@react-pdf/renderer'
+import { Document, Page, Polygon, Svg, Text, View } from '@react-pdf/renderer'
 import {
   applyCalibration,
   DEFAULT_BLEED,
@@ -22,6 +22,8 @@ type CalibrationDocProps = {
   grid: Grid
   calibration: Calibration
 }
+
+const CALIBRATION_PAGE_LABELS = ['FRONT ▲', 'BACK ▲'] as const
 
 type TrimRect = {
   left: number
@@ -220,7 +222,7 @@ function CornerScale({
       {ticks.map((tick) => {
         const offsetPt = tick.offsetPt ?? 0
         const length =
-          tick.mm === 0 ? 4 : tick.kind === 'mid' ? 2.5 : 1.5
+          tick.mm === 0 ? 6 : tick.kind === 'mid' ? 4 : 2
 
         return (
           <Fragment key={`corner-tick-${mark.x}-${mark.y}-${tick.mm}`}>
@@ -313,12 +315,12 @@ export default function CalibrationDoc({
   const pages = [
     {
       side: 'front' as const,
-      label: 'FRONT',
+      label: CALIBRATION_PAGE_LABELS[0],
       marks: marks.front,
     },
     {
       side: 'back' as const,
-      label: 'BACK',
+      label: CALIBRATION_PAGE_LABELS[1],
       marks: marks.back,
     },
   ]
@@ -371,17 +373,29 @@ export default function CalibrationDoc({
             {pageMarks.map((mark, index) => (
               <CalibrationCrosshair key={`mark-${index}`} mark={mark} />
             ))}
-            <Text
+            <View
               style={{
                 position: 'absolute',
                 left: 10,
                 top: 8,
-                fontSize: 8,
-                color: '#000000',
+                flexDirection: 'row',
+                alignItems: 'center',
               }}
             >
-              {label}
-            </Text>
+              <Text style={{ fontSize: 8, color: '#000000' }}>
+                {label.endsWith(' ▲') ? label.slice(0, -2) : label}
+              </Text>
+              {label.endsWith(' ▲') && (
+                <Svg
+                  width={7}
+                  height={6}
+                  viewBox="0 0 7 6"
+                  style={{ marginLeft: 2 }}
+                >
+                  <Polygon points="0,6 3.5,0 7,6" fill="#000000" />
+                </Svg>
+              )}
+            </View>
           </View>
         </Page>
       ))}

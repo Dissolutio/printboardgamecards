@@ -31,45 +31,50 @@ function roundThousandth(value: number): number {
   return Math.round(value * 1000) / 1000
 }
 
-function labelIndex(mm: number): number {
-  return mm < 0 ? 5 + mm : mm + 4
-}
-
 export function cornerLabelBoxes(
   mark: Point,
   paper: Size,
 ): CornerLabelBox[] {
-  const isLeft = mark.x < paper.width / 2
-  const isTop = mark.y < paper.height / 2
-  const ticks = cornerScaleTicks().filter((tick) => tick.label !== undefined)
+  void paper
+  const halfLength = mmToPt(5)
+  const labelOffset = halfLength + 7
   const width = 7
   const height = 7
 
-  return ticks.flatMap((tick) => {
-    const offsetPt = tick.offsetPt ?? 0
-    const index = labelIndex(tick.mm)
-    const rowOffset = 8 + (index % 3) * 8
-    const innerOffset = 22 + (index % 3) * 8
-
-    return [
-      {
-        axis: 'horizontal' as const,
-        text: tick.label ?? '',
-        left: mark.x + offsetPt - width / 2 + Math.sign(tick.mm) * 2,
-        top: isTop ? mark.y + rowOffset : mark.y - rowOffset - height,
-        width,
-        height,
-      },
-      {
-        axis: 'vertical' as const,
-        text: tick.label ?? '',
-        left: isLeft ? mark.x + innerOffset : mark.x - innerOffset - width,
-        top: mark.y + offsetPt - height / 2 + Math.sign(tick.mm) * 2,
-        width,
-        height,
-      },
-    ]
-  })
+  return [
+    {
+      axis: 'horizontal',
+      text: '-5',
+      left: mark.x - labelOffset - width / 2,
+      top: mark.y - height / 2,
+      width,
+      height,
+    },
+    {
+      axis: 'horizontal',
+      text: '5',
+      left: mark.x + labelOffset - width / 2,
+      top: mark.y - height / 2,
+      width,
+      height,
+    },
+    {
+      axis: 'vertical',
+      text: '-5',
+      left: mark.x - width / 2,
+      top: mark.y - labelOffset - height / 2,
+      width,
+      height,
+    },
+    {
+      axis: 'vertical',
+      text: '5',
+      left: mark.x - width / 2,
+      top: mark.y + labelOffset - height / 2,
+      width,
+      height,
+    },
+  ]
 }
 
 export function fullWidthScaleTicks(paperWidthPt: number): ScaleTick[] {
@@ -96,7 +101,7 @@ export function cornerScaleTicks(): ScaleTick[] {
       mm,
       offsetPt: roundThousandth(mmToPt(mm)),
       kind,
-      ...(kind === 'mid' ? { label: String(mm) } : {}),
+      ...(Math.abs(mm) === 5 ? { label: String(mm) } : {}),
     }
   })
 }
