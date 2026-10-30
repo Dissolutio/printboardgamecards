@@ -1292,13 +1292,21 @@ function App() {
                 <p>
                   Look at one corner mark. The circle is the front mark. The square is the back mark.
                 </p>
+                <p>The front mark has a scale in millimeters in two directions.</p>
                 <p>
-                  Find where the vertical line of the back mark crosses the horizontal scale of the
-                  front mark. Read the number in millimeters.
+                  The longest tick marks zero. Each longer tick after zero marks one millimeter. The
+                  numbers 5 and -5 mark the ends.
                 </p>
                 <p>
-                  Find where the horizontal line of the back mark crosses the vertical scale. Read
-                  that number.
+                  Find where the vertical line of the back mark crosses the horizontal scale. Count
+                  the longer ticks from zero.
+                </p>
+                <p>
+                  If the line falls between two longer ticks, estimate the part of a millimeter.
+                </p>
+                <p>
+                  Find where the horizontal line of the back mark crosses the vertical scale. Count
+                  the same way.
                 </p>
                 <p>
                   Positive numbers are to the right and downward. Negative numbers are to the left
