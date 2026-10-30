@@ -4,8 +4,8 @@ import {
   type PieceOrientation,
 } from '../lib/geometry.ts'
 
-type PaperName = keyof typeof PAPER
-type PresetName = keyof typeof CARD_PRESETS
+export type PaperName = keyof typeof PAPER
+export type PresetName = keyof typeof CARD_PRESETS
 type ExportMode = 'PRINT_GLUE' | 'DUPLEX'
 
 type PrintSettingsPanelProps = {
