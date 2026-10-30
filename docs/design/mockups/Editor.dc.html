@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Card editor as a dialog</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+body{margin:0;font-family:'IBM Plex Sans',system-ui,sans-serif;background:#10141c;color:#e8ecf4}
+</style>
+</helmet>
+<div style="width:100%;min-height:900px;box-sizing:border-box;background:#0a0d13;color:#e8ecf4;font-family:'IBM Plex Sans',system-ui,sans-serif;display:flex;align-items:center;justify-content:center;padding:32px">
+
+<div role="dialog" aria-label="Edit card 5" style="width:100%;max-width:1180px;background:#181e29;border:1px solid #2c3547;border-radius:16px;box-shadow:0 24px 80px rgba(0,0,0,.6);display:flex;flex-direction:column;overflow:hidden">
+
+<div style="display:flex;flex-wrap:wrap;align-items:center;gap:12px;padding:14px 20px;border-bottom:1px solid #2c3547">
+<button aria-label="Previous card" style="width:44px;height:44px;background:#1f2633;color:#e8ecf4;border:1px solid #2c3547;border-radius:8px;font-size:18px">‹</button>
+<div style="display:flex;flex-direction:column"><span style="font-size:18px;font-weight:600">5 of Spades</span><span style="font-size:13px;color:#a3adc2">Card 5 of 52</span></div>
+<button aria-label="Next card" style="width:44px;height:44px;background:#1f2633;color:#e8ecf4;border:1px solid #2c3547;border-radius:8px;font-size:18px">›</button>
+<span style="flex-grow:1"></span>
+<div style="display:flex;align-items:center;gap:8px"><span style="font-size:14px;color:#a3adc2">Copies</span>
+<button aria-label="Fewer copies" style="width:44px;height:44px;background:#1f2633;color:#e8ecf4;border:1px solid #2c3547;border-radius:8px;font-size:18px">−</button>
+<span style="min-width:28px;text-align:center;font-size:16px;font-weight:600">1</span>
+<button aria-label="More copies" style="width:44px;height:44px;background:#1f2633;color:#e8ecf4;border:1px solid #2c3547;border-radius:8px;font-size:18px">+</button></div>
+<button aria-label="Close" style="width:44px;height:44px;background:transparent;color:#e8ecf4;border:1px solid #2c3547;border-radius:8px;font-size:20px">×</button>
+</div>
+
+<div style="display:flex;gap:8px;padding:14px 20px 0">
+<button style="min-height:44px;padding:0 22px;background:transparent;color:#a3adc2;border:0;border-bottom:3px solid transparent;font:inherit;font-size:15px">Front</button>
+<button style="min-height:44px;padding:0 22px;background:transparent;color:#e8ecf4;border:0;border-bottom:3px solid #8f7bff;font:inherit;font-size:15px;font-weight:600">Back</button>
+</div>
+
+<div style="display:flex;flex-wrap:wrap;gap:24px;padding:20px">
+<div style="flex:1 1 460px;min-width:0;display:flex;align-items:center;justify-content:center;background:#10141c;border:1px solid #2c3547;border-radius:12px;padding:28px">
+<div style="position:relative;width:300px;height:420px;background:#f6f4ee;border-radius:10px;padding:14px;box-sizing:border-box">
+<div style="width:100%;height:100%;border-radius:4px;background:linear-gradient(#53697d,#2a3a4a);position:relative;outline:2px solid #8f7bff;outline-offset:0;display:flex;align-items:flex-end;justify-content:center;overflow:hidden">
+<div style="width:120px;height:230px;background:#c9b79c;border-radius:60px 60px 10px 10px;opacity:.85"></div>
+<div style="position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,.18) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.18) 1px,transparent 1px);background-size:33.3% 33.3%"></div>
+</div>
+<span style="position:absolute;left:50%;transform:translateX(-50%);bottom:-26px;font-size:12px;color:#a3adc2;white-space:nowrap">The white border is the bleed. It is cut away.</span>
+</div>
+</div>
+
+<div style="flex:0 1 380px;min-width:280px;display:flex;flex-direction:column;gap:16px">
+<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+<span style="padding:4px 10px;background:#12372a;color:#7ee2a8;border-radius:999px;font-size:13px;font-weight:600">312 DPI</span>
+<span style="font-size:13px;color:#a3adc2">Good for printing.</span>
+</div>
+<div style="display:flex;gap:8px">
+<button style="flex:1;min-height:44px;background:#1f2633;color:#e8ecf4;border:1px solid #2c3547;border-radius:8px;font:inherit;font-size:14px">Fit</button>
+<button style="flex:1;min-height:44px;background:#1f2633;color:#e8ecf4;border:2px solid #8f7bff;border-radius:8px;font:inherit;font-size:14px;font-weight:600">Fill</button>
+<button style="flex:1;min-height:44px;background:#1f2633;color:#e8ecf4;border:1px solid #2c3547;border-radius:8px;font:inherit;font-size:14px">Replace</button>
+</div>
+<label style="display:flex;flex-direction:column;gap:8px;font-size:14px;color:#a3adc2">Zoom
+<span style="display:flex;align-items:center;gap:10px"><input type="range" min="0.1" max="10" step="0.01" value="1.2" style="flex:1;accent-color:#8f7bff;height:44px"><span style="min-width:52px;text-align:right;color:#e8ecf4;font-size:15px">1.20</span></span></label>
+<label style="display:flex;align-items:center;gap:10px;min-height:44px;font-size:15px"><input type="checkbox" style="width:20px;height:20px;accent-color:#8f7bff">Use a background color<span style="width:28px;height:28px;border-radius:6px;background:#17243a;border:1px solid #2c3547;margin-left:auto"></span></label>
+<div style="padding:14px;border:1px solid #2c3547;border-radius:12px;background:#1f2633;display:flex;flex-direction:column;gap:10px">
+<span style="font-size:14px;line-height:1.4">This back is used on 52 cards.</span>
+<button style="min-height:44px;background:#7a5cff;color:#fff;border:0;border-radius:8px;font:inherit;font-size:15px;font-weight:600">Use this back for every card</button>
+<span style="font-size:13px;color:#a3adc2">Other cards keep their own fronts.</span>
+</div>
+</div>
+</div>
+
+<div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:14px 20px;border-top:1px solid #2c3547;background:#141922">
+<button style="min-height:44px;padding:0 16px;background:transparent;color:#e8ecf4;border:1px solid #2c3547;border-radius:8px;font:inherit;font-size:14px">Duplicate card</button>
+<button style="min-height:44px;padding:0 16px;background:transparent;color:#ff7aa2;border:1px solid #5b2a3d;border-radius:8px;font:inherit;font-size:14px">Delete card</button>
+<span style="flex-grow:1"></span>
+<span style="font-size:13px;color:#a3adc2">Changes save as you work.</span>
+<button style="min-height:44px;padding:0 26px;background:#7a5cff;color:#fff;border:0;border-radius:8px;font:inherit;font-size:15px;font-weight:600">Done</button>
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() { return {}; }
+}
+</script>
+</body>
+</html>
