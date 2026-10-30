@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { CARD_PRESETS } from './geometry.ts'
-import { cropAreaSize, effectiveDpi, isLowRes } from './crop.ts'
+import { cropAreaSize, effectiveDpi, isLowRes, sameCropRect } from './crop.ts'
 
 describe('cropAreaSize', () => {
   it('includes bleed in IMAGE mode', () => {
@@ -15,6 +15,19 @@ describe('cropAreaSize', () => {
       width: 180,
       height: 252,
     })
+  })
+})
+
+describe('sameCropRect', () => {
+  const crop = { x: 1, y: 2, width: 3, height: 4 }
+
+  it('matches equal crop coordinates', () => {
+    expect(sameCropRect(crop, { ...crop })).toBe(true)
+  })
+
+  it('rejects missing or changed crop coordinates', () => {
+    expect(sameCropRect(undefined, crop)).toBe(false)
+    expect(sameCropRect({ ...crop, x: 0 }, crop)).toBe(false)
   })
 })
 

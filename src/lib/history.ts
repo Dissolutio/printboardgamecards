@@ -1,5 +1,6 @@
 import type { PieceOrientation } from './geometry.ts'
 import type { Card } from '../types.ts'
+import { objectUrls } from './cardOps.ts'
 import { CARD_PRESETS, PAPER } from './geometry.ts'
 
 export type HistorySettings = {
@@ -157,6 +158,28 @@ export function retainedUrls(history: History): Set<string> {
     }
   }
   return urls
+}
+
+export function unusedBlobUrls(
+  candidates: string[],
+  cards: Card[],
+  history: History,
+): string[] {
+  const retained = new Set([
+    ...cards.flatMap(objectUrls),
+    ...retainedUrls(history),
+  ])
+  return [...new Set(candidates)].filter(
+    (url) => url.startsWith('blob:') && !retained.has(url),
+  )
+}
+
+export function releasedHistoryUrls(
+  previous: History,
+  next: History,
+  currentCards: Card[],
+): string[] {
+  return unusedBlobUrls([...retainedUrls(previous)], currentCards, next)
 }
 
 export function replacePresent(

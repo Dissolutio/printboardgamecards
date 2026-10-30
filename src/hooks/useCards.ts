@@ -16,7 +16,7 @@ import {
   CARD_PRESETS,
   DEFAULT_BLEED,
 } from '../lib/geometry.ts'
-import { cropAreaSize } from '../lib/crop.ts'
+import { cropAreaSize, sameCropRect } from '../lib/crop.ts'
 import { centeredMaximumCrop } from '../lib/cropConvert.ts'
 import { planBackSync } from '../lib/backSync.ts'
 import { getImageType } from '../lib/imageType.ts'
@@ -28,9 +28,11 @@ import {
   commit as commitHistory,
   createHistory,
   redo as redoHistory,
+  releasedHistoryUrls,
   replacePresent,
   retainedUrls,
   undo as undoHistory,
+  unusedBlobUrls,
   type History,
   type HistorySettings,
 } from '../lib/history.ts'
@@ -50,12 +52,8 @@ function revokeUnusedUrls(
   remainingCards: Card[],
   history: History,
 ) {
-  const retained = new Set([
-    ...remainingCards.flatMap(objectUrls),
-    ...retainedUrls(history),
-  ])
-  for (const url of new Set(candidates)) {
-    if (url.startsWith('blob:') && !retained.has(url)) URL.revokeObjectURL(url)
+  for (const url of unusedBlobUrls(candidates, remainingCards, history)) {
+    URL.revokeObjectURL(url)
   }
 }
 
@@ -132,12 +130,8 @@ export function useCards({
   }
 
   function releaseDroppedHistoryUrls(previous: History, next: History, nextCards: Card[]) {
-    const retained = new Set([
-      ...nextCards.flatMap(objectUrls),
-      ...retainedUrls(next),
-    ])
-    for (const url of retainedUrls(previous)) {
-      if (url.startsWith('blob:') && !retained.has(url)) URL.revokeObjectURL(url)
+    for (const url of releasedHistoryUrls(previous, next, nextCards)) {
+      URL.revokeObjectURL(url)
     }
   }
 
@@ -226,12 +220,16 @@ export function useCards({
       direction === 'undo'
         ? beforeSelectionBySnapshot.current.get(previousHistory.present)
         : afterSelectionBySnapshot.current.get(nextHistory.present)
+    const selectedIdToRestore =
+      selected && nextHistory.present.cards.some((card) => card.id === selected)
+        ? selected
+        : (nextHistory.present.cards[0]?.id ?? '')
     cardsRef.current = nextHistory.present.cards
     setCards(nextHistory.present.cards)
     settingsRef.current = nextHistory.present.settings
     updateHistory(nextHistory, nextHistory.present.cards)
     restoreSettings(nextHistory.present.settings)
-    setSelectedId(selected ?? selectedIdRef.current)
+    setSelectedId(selectedIdToRestore)
     setErrors({ front: undefined, back: undefined })
   }
 
@@ -529,14 +527,26 @@ export function useCards({
     }
   }
 
-  function handleProcessedImage(side: CardSide, blob: Blob) {
+  function handleProcessedImage(
+    cardId: string,
+    side: CardSide,
+    blob: Blob,
+    renderedCrop: PixelCropRect,
+    renderedSource: string,
+  ) {
     if (starterDeckOperationInProgress.current) return
-    const currentCard = cardsRef.current.find((card) => card.id === selectedId)
+    const currentCard = cardsRef.current.find((card) => card.id === cardId)
     if (!currentCard) return
     const sourceKey = side === 'front' ? 'frontSrc' : 'backSrc'
     const cropKey = side === 'front' ? 'frontCrop' : 'backCrop'
     const processedKey = side === 'front' ? 'frontProcessedSrc' : 'backProcessedSrc'
-    if (!currentCard[sourceKey] || !currentCard[cropKey]) return
+    const currentCrop = currentCard[cropKey]
+    if (
+      currentCard[sourceKey] !== renderedSource ||
+      !sameCropRect(currentCrop, renderedCrop)
+    ) {
+      return
+    }
 
     const nextProcessedUrl = URL.createObjectURL(blob)
     const nextCard = { ...currentCard, [processedKey]: nextProcessedUrl }

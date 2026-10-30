@@ -1,5 +1,18 @@
 import type { Size } from './geometry.ts'
-import type { BleedMode } from '../types.ts'
+import type { BleedMode, PixelCropRect } from '../types.ts'
+
+export function sameCropRect(
+  left: PixelCropRect | undefined,
+  right: PixelCropRect,
+): boolean {
+  return (
+    left !== undefined &&
+    left.x === right.x &&
+    left.y === right.y &&
+    left.width === right.width &&
+    left.height === right.height
+  )
+}
 
 export function cropAreaSize(
   card: Size,

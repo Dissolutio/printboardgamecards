@@ -6,6 +6,7 @@ import {
   commit,
   createHistory,
   redo,
+  releasedHistoryUrls,
   retainedUrls,
   undo,
   type HistorySettings,
@@ -33,6 +34,21 @@ describe('history', () => {
     expect(undo(committed).present).toBe(initial)
     expect(canRedo(undo(committed))).toBe(true)
     expect(redo(undo(committed)).present.cards[0]?.quantity).toBe(2)
+  })
+
+  it('records setting changes in snapshots', () => {
+    const initial = createHistory(snapshot())
+    const changed = commit(
+      initial,
+      {
+        ...initial.present,
+        settings: { ...settings, paperName: 'A4' },
+      },
+      { now: 1 },
+    )
+
+    expect(changed.present.settings.paperName).toBe('A4')
+    expect(undo(changed).present.settings.paperName).toBe('LETTER')
   })
 
   it('clears redo history when a new snapshot is committed', () => {
@@ -107,12 +123,20 @@ describe('history', () => {
   })
 
   it('tracks URLs while deleted cards can still be restored', () => {
-    const card = { ...createCard('card-1'), frontSrc: 'blob:front-image' }
+    const card = {
+      ...createCard('card-1'),
+      frontSrc: 'blob:front-image',
+      backSrc: '/decks/classic/AS.svg',
+    }
     let history = createHistory(snapshot([card]))
     history = commit(history, snapshot([]), { now: 1 })
 
     expect(retainedUrls(history)).toContain('blob:front-image')
+    expect(retainedUrls(history)).toContain('/decks/classic/AS.svg')
     expect(retainedUrls(undo(history))).toContain('blob:front-image')
+    expect(releasedHistoryUrls(history, undo(history), [])).not.toContain(
+      'blob:front-image',
+    )
   })
 
   it('drops URLs when the snapshot that retained them falls off the cap', () => {
@@ -120,7 +144,9 @@ describe('history', () => {
     let history = createHistory(snapshot([card]))
     history = commit(history, snapshot([]), { now: 1 })
 
+    let beforeLastCommit = history
     for (let count = 0; count < 50; count += 1) {
+      beforeLastCommit = history
       history = commit(
         history,
         snapshot([{ ...createCard('card-1'), quantity: count + 1 }]),
@@ -129,6 +155,8 @@ describe('history', () => {
     }
 
     expect(retainedUrls(history)).not.toContain('blob:front-image')
+    expect(releasedHistoryUrls(beforeLastCommit, history, history.present.cards))
+      .toContain('blob:front-image')
   })
 
   it('restores a replaced image when undone', () => {
