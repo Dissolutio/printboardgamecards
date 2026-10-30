@@ -49,6 +49,16 @@ export const en: Catalog = {
   'calibration.offset.edit.summary': 'Edit offsets directly',
   'cardFace.empty.front': 'No front image',
   'cardFace.empty.back': 'No back image',
+  'undo.button': 'Undo',
+  'redo.button': 'Redo',
+  'undo.toast.cardDeleted': 'Card deleted.',
+  'undo.toast.imageRemoved': 'Image removed.',
+  'undo.toast.backsReplaced': {
+    one: 'Back replaced on {count} card.',
+    other: 'Backs replaced on {count} cards.',
+  },
+  'undo.toast.projectOpened': 'Project opened.',
+  'undo.toast.starterDeckCreated': 'New deck created.',
   'cardFace.background.front': 'Front side: background color, no image.',
   'cardFace.background.back': 'Back side: background color, no image.',
   'card.copyCount.output': {

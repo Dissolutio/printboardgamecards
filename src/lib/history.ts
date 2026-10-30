@@ -1,5 +1,4 @@
 import type { PieceOrientation } from './geometry.ts'
-import { objectUrls } from './cardOps.ts'
 import type { Card } from '../types.ts'
 import { CARD_PRESETS, PAPER } from './geometry.ts'
 
@@ -168,8 +167,4 @@ export function replacePresent(
     ...history,
     present: withSharedCards(history.present, snapshot),
   }
-}
-
-export function blobUrlsForCards(cards: Card[]): string[] {
-  return cards.flatMap(objectUrls)
 }
