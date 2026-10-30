@@ -16,7 +16,6 @@ import {
   DEFAULT_BLEED,
   mmToPt,
   PAPER,
-  type Point,
 } from './geometry.ts'
 
 describe('fullWidthScaleTicks', () => {
@@ -67,37 +66,17 @@ describe('cornerScaleTicks', () => {
     )
   }
 
-  function cornerTickLines(mark: Point): {
+  function crosshairLines(mark: Point): {
     left: number
     top: number
     width: number
     height: number
   }[] {
-    const halfLength = mmToPt(5)
-    const ticks = cornerScaleTicks()
+    const arm = mmToPt(6)
 
     return [
-      { left: mark.x - halfLength, top: mark.y - 0.125, width: 2 * halfLength, height: 0.25 },
-      { left: mark.x - 0.125, top: mark.y - halfLength, width: 0.25, height: 2 * halfLength },
-      ...ticks.flatMap((tick) => {
-        const offsetPt = tick.offsetPt ?? 0
-        const length = tick.mm === 0 ? 4 : tick.kind === 'mid' ? 2.5 : 1.5
-
-        return [
-          {
-            left: mark.x + offsetPt - 0.125,
-            top: mark.y - length / 2,
-            width: 0.25,
-            height: length,
-          },
-          {
-            left: mark.x - length / 2,
-            top: mark.y + offsetPt - 0.125,
-            width: length,
-            height: 0.25,
-          },
-        ]
-      }),
+      { left: mark.x - arm, top: mark.y - 0.125, width: 2 * arm, height: 0.25 },
+      { left: mark.x - 0.125, top: mark.y - arm, width: 0.25, height: 2 * arm },
     ]
   }
 
@@ -105,7 +84,7 @@ describe('cornerScaleTicks', () => {
     for (const [paperName, paper] of Object.entries(PAPER)) {
       for (const isLeft of [true, false]) {
         for (const isTop of [true, false]) {
-          it(`separates labels from ticks and trim lines for ${paperName} ${
+          it(`places four clear endpoint labels for ${paperName} ${
             isTop ? 'top' : 'bottom'
           }-${isLeft ? 'left' : 'right'}`, () => {
             const mark = {
@@ -113,19 +92,20 @@ describe('cornerScaleTicks', () => {
               y: paper.height * (isTop ? 0.1 : 0.9),
             }
             const labels = cornerLabelBoxes(mark, paper)
-            const tickLines = cornerTickLines(mark)
+            const crosshairs = crosshairLines(mark)
+            const arm = mmToPt(5)
             const trimLines = [
               {
-                left: mark.x - 100,
+                left: isLeft ? mark.x : mark.x - 100,
                 top: mark.y - 0.125,
-                width: 200,
+                width: 100,
                 height: 0.25,
               },
               {
                 left: mark.x - 0.125,
-                top: mark.y - 100,
+                top: isTop ? mark.y : mark.y - 100,
                 width: 0.25,
-                height: 200,
+                height: 100,
               },
             ]
             const markCircle = {
@@ -135,19 +115,53 @@ describe('cornerScaleTicks', () => {
               height: 6,
             }
 
-            expect(labels).toHaveLength(20)
+            expect(labels).toHaveLength(4)
+            expect(labels.map(({ axis, text }) => [axis, text])).toEqual([
+              ['horizontal', '-5'],
+              ['horizontal', '5'],
+              ['vertical', '-5'],
+              ['vertical', '5'],
+            ])
+
+            const trimIntersections: string[] = []
             for (let first = 0; first < labels.length; first += 1) {
               expect(intersects(labels[first], markCircle)).toBe(false)
               for (let second = first + 1; second < labels.length; second += 1) {
                 expect(intersects(labels[first], labels[second])).toBe(false)
               }
-              for (const line of [...tickLines, ...trimLines]) {
+              for (const line of crosshairs) {
                 expect(intersects(labels[first], line)).toBe(false)
               }
+              for (const line of trimLines) {
+                if (intersects(labels[first], line)) {
+                  trimIntersections.push(`${labels[first].axis}:${labels[first].text}`)
+                }
+              }
+
+              const centerX = labels[first].left + labels[first].width / 2
+              const centerY = labels[first].top + labels[first].height / 2
+              const endpoint =
+                labels[first].axis === 'horizontal'
+                  ? mark.x + (labels[first].text === '5' ? arm : -arm)
+                  : mark.y + (labels[first].text === '5' ? arm : -arm)
+              const center = labels[first].axis === 'horizontal' ? centerX : centerY
+              const distanceBeyondEnd =
+                (center - endpoint) * (labels[first].text === '5' ? 1 : -1)
+
+              expect(
+                labels[first].axis === 'horizontal'
+                  ? Math.abs(centerY - mark.y)
+                  : Math.abs(centerX - mark.x),
+              ).toBeLessThanOrEqual(0.5)
+              expect(distanceBeyondEnd).toBeGreaterThan(0)
+              expect(distanceBeyondEnd).toBeLessThanOrEqual(10)
             }
-            expect(labels.filter(({ axis }) => axis === 'horizontal').map(({ text }) =>
-              text,
-            )).toEqual(['-5', '-4', '-3', '-2', '-1', '1', '2', '3', '4', '5'])
+            expect(trimIntersections.sort()).toEqual(
+              [
+                `horizontal:${isLeft ? '5' : '-5'}`,
+                `vertical:${isTop ? '5' : '-5'}`,
+              ].sort(),
+            )
             expect(labels.every(({ left, top, width, height }) =>
               left >= 0 &&
               top >= 0 &&
@@ -157,31 +171,18 @@ describe('cornerScaleTicks', () => {
           })
         }
       }
-
-      it(`uses paper-relative corner positions for ${paperName}`, () => {
-        const left = cornerLabelBoxes(
-          { x: paper.width / 2 - 1, y: paper.height / 2 - 1 },
-          paper,
-        )
-        const right = cornerLabelBoxes(
-          { x: paper.width / 2 + 1, y: paper.height / 2 + 1 },
-          paper,
-        )
-
-        expect(left.find(({ axis }) => axis === 'vertical')?.left).toBeGreaterThan(paper.width / 2)
-        expect(right.find(({ axis }) => axis === 'vertical')?.left).toBeLessThan(paper.width / 2)
-        expect(left.find(({ axis }) => axis === 'horizontal')?.top).toBeGreaterThan(paper.height / 2)
-        expect(right.find(({ axis }) => axis === 'horizontal')?.top).toBeLessThan(paper.height / 2)
-      })
     }
   })
 
-  it('labels integer ticks and leaves half-millimeter ticks unlabeled', () => {
-    expect(ticks[8]).toMatchObject({ mm: -1, kind: 'mid', label: '-1' })
+  it('labels only the two end ticks and leaves all other ticks unlabeled', () => {
+    expect(ticks[0]).toMatchObject({ mm: -5, label: '-5' })
+    expect(ticks[20]).toMatchObject({ mm: 5, label: '5' })
+    expect(ticks.slice(1, -1).every(({ label }) => label === undefined)).toBe(true)
+    expect(ticks[8]).toMatchObject({ mm: -1, kind: 'mid' })
     expect(ticks[9]).toMatchObject({ mm: -0.5, kind: 'minor' })
     expect(ticks[9].label).toBeUndefined()
     expect(ticks[11]).toMatchObject({ mm: 0.5, kind: 'minor' })
-    expect(ticks[12]).toMatchObject({ mm: 1, kind: 'mid', label: '1' })
+    expect(ticks[12]).toMatchObject({ mm: 1, kind: 'mid' })
   })
 })
 
