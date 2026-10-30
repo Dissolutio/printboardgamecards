@@ -46,6 +46,12 @@ import {
 } from './lib/printerProfiles.ts'
 import { hasBackground } from './lib/piece.ts'
 import { parseMeasurement } from './lib/calibrationInput.ts'
+import {
+  calibrationScaleY,
+  estimatePrintScale,
+  expectedScaleGapSpaces,
+  SHEET_WIDTH_MM,
+} from './lib/calibrationScale.ts'
 import { getImageType } from './lib/imageType.ts'
 import { loadImageSize, renderCrop } from './lib/renderCrop.ts'
 import { parseProject, serializeProject } from './lib/project.ts'
@@ -70,11 +76,27 @@ const calibrationNumberFormat = new Intl.NumberFormat(undefined, {
   minimumFractionDigits: 2,
   maximumFractionDigits: 2,
 })
+const scaleGapFormat = new Intl.NumberFormat(undefined, {
+  maximumFractionDigits: 1,
+})
+const scalePercentFormat = new Intl.NumberFormat(undefined, {
+  style: 'percent',
+  minimumFractionDigits: 1,
+  maximumFractionDigits: 1,
+})
 
 type PaperName = keyof typeof PAPER
 type PresetName = keyof typeof CARD_PRESETS
 type ExportMode = 'PRINT_GLUE' | 'DUPLEX'
 type QuantityDirection = -1 | 1
+
+function expectedScaleTotalMessage(value: number): string {
+  return `The expected total is ${scaleGapFormat.format(value)}.`
+}
+
+function estimatedScaleMessage(value: number): string {
+  return `Estimated printer scale is ${scalePercentFormat.format(value)}.`
+}
 
 type QuantityStepperProps = {
   quantity: number
@@ -258,6 +280,7 @@ function App() {
   })
   const [observedXmm, setObservedXmm] = useState('')
   const [observedYmm, setObservedYmm] = useState('')
+  const [scaleGapInput, setScaleGapInput] = useState('')
   const [calibrationUpdated, setCalibrationUpdated] = useState(false)
   const [calibrationStorageWarning, setCalibrationStorageWarning] = useState<string>()
   const [isExporting, setIsExporting] = useState(false)
@@ -276,6 +299,17 @@ function App() {
     orientation: pieceOrientation,
   })
   const calibrationPt = exportCalibrationPt('CALIBRATED', activeProfile)
+  const hasCalibrationScale =
+    calibrationScaleY({ paper, grid, cardSize, backOffsetY: calibrationPt.offsetY }) !== null
+  const scaleGapValue = parseMeasurement(scaleGapInput)
+  const validScaleGap = scaleGapValue !== undefined && scaleGapValue >= 0
+  const scaleEstimate =
+    scaleGapValue !== undefined && scaleGapValue >= 0
+      ? estimatePrintScale({
+          sheetWidthMm: SHEET_WIDTH_MM[paperName],
+          gapSpaces: scaleGapValue,
+        })
+      : undefined
   const selectedCard = cards.find((card) => card.id === selectedId)
   const isProjectControlsDisabled =
     isChangingPreset || isSavingProject || isLoadingProject || isExporting
@@ -1256,27 +1290,94 @@ function App() {
                 <p>Place the back arrow at the top of the page.</p>
                 <p>Hold the sheet up to a light. Look from the front side.</p>
                 <p>
-                  Print it double-sided and measure the distance from each front mark to its back
-                  mark at two opposite corners.
+                  Look at one corner mark. The circle is the front mark. The square is the back mark.
                 </p>
                 <p>
-                  If the two distances differ by more than 0.5 mm, the printer is scaling or skewing
-                  the page. Enter the average of the two distances.
+                  Find where the vertical line of the back mark crosses the horizontal scale of the
+                  front mark. Read the number in millimeters.
+                </p>
+                <p>
+                  Find where the horizontal line of the back mark crosses the vertical scale. Read
+                  that number.
+                </p>
+                <p>
+                  Positive numbers are to the right and downward. Negative numbers are to the left
+                  and upward.
+                </p>
+                <p>
+                  Read two opposite corners. If the readings differ by more than 0.5 mm, enter the
+                  average.
                 </p>
               </li>
+            </ol>
+            {hasCalibrationScale ? (
+              <ol start={3} className="list-decimal space-y-4 pl-5">
+                <li className="space-y-1">
+                  <h3 className="font-medium">Check the printer scaling</h3>
+                  <p>Look at the long scale at the top or bottom of the front page.</p>
+                  <p>
+                    Count the empty spaces between the last tick and the paper edge on the left. Do
+                    the same on the right.
+                  </p>
+                  <p>Enter the total of both counts.</p>
+                  <label className="form-control max-w-sm gap-1">
+                    <span className="label-text">Total of both counts</span>
+                    <input
+                      className="input input-bordered w-full"
+                      type="number"
+                      min={0}
+                      step="any"
+                      aria-label="Total of both counts"
+                      aria-describedby="scale-gap-hint"
+                      aria-invalid={
+                        scaleGapInput.trim() !== '' && !validScaleGap
+                      }
+                      value={scaleGapInput}
+                      onChange={(event) => setScaleGapInput(event.currentTarget.value)}
+                    />
+                    <span id="scale-gap-hint" className="text-sm">
+                      {expectedScaleTotalMessage(
+                        expectedScaleGapSpaces(SHEET_WIDTH_MM[paperName]),
+                      )}
+                    </span>
+                    {scaleGapInput.trim() !== '' && !validScaleGap && (
+                      <span className="text-sm text-error">Enter a number.</span>
+                    )}
+                  </label>
+                  {scaleEstimate && (
+                    <div className="space-y-1" role="status" aria-live="polite">
+                      <p>
+                        {scaleEstimate.verdict === 'OK'
+                          ? 'The printer scale is close to 100 percent.'
+                          : scaleEstimate.verdict === 'TOO_SMALL'
+                            ? 'The printer made the page smaller. Print again at Actual Size and do not use Fit to Page.'
+                            : 'The printer made the page larger. Print again at Actual Size and do not use Fit to Page.'}
+                      </p>
+                      <p>{estimatedScaleMessage(scaleEstimate.scale)}</p>
+                    </div>
+                  )}
+                </li>
+              </ol>
+            ) : (
+              <p>This card size has no long scale on the calibration sheet.</p>
+            )}
+            <ol
+              start={hasCalibrationScale ? 4 : 3}
+              className="list-decimal space-y-4 pl-5"
+            >
               <li>
                 <fieldset className="space-y-3 rounded-box border border-base-300 p-4">
                   <legend className="px-1 font-medium">Enter the measured distances.</legend>
                   <div className="grid gap-3 sm:grid-cols-2">
                     <label className="form-control gap-1">
                       <span className="label-text">
-                        Horizontal distance from the front mark to the back mark (mm)
+                        Horizontal reading on the printed scale (mm)
                       </span>
                       <input
                         className="input input-bordered w-full"
                         type="number"
                         step={0.05}
-                        aria-label="Horizontal distance from the front mark to the back mark (mm)"
+                        aria-label="Horizontal reading on the printed scale (mm)"
                         aria-invalid={
                           observedXmm.trim() !== '' && parseMeasurement(observedXmm) === undefined
                         }
@@ -1298,13 +1399,13 @@ function App() {
                     </label>
                     <label className="form-control gap-1">
                       <span className="label-text">
-                        Vertical distance from the front mark to the back mark (mm)
+                        Vertical reading on the printed scale (mm)
                       </span>
                       <input
                         className="input input-bordered w-full"
                         type="number"
                         step={0.05}
-                        aria-label="Vertical distance from the front mark to the back mark (mm)"
+                        aria-label="Vertical reading on the printed scale (mm)"
                         aria-invalid={
                           observedYmm.trim() !== '' && parseMeasurement(observedYmm) === undefined
                         }
