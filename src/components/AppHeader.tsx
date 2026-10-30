@@ -11,6 +11,7 @@ type AppHeaderProps = {
   redoLabel: string
   onUndo: () => void
   onRedo: () => void
+  onNewDeck: () => void
 }
 
 export default function AppHeader({
@@ -22,6 +23,7 @@ export default function AppHeader({
   redoLabel,
   onUndo,
   onRedo,
+  onNewDeck,
 }: AppHeaderProps) {
   const paper = PAPER[paperName]
 
@@ -34,6 +36,16 @@ export default function AppHeader({
         <h1 className="mt-1 text-3xl font-bold">Card deck editor</h1>
       </div>
       <div className="flex flex-wrap items-center justify-end gap-3">
+        <a
+          className="btn btn-ghost min-h-11 px-3"
+          href="#start"
+          onClick={(event) => {
+            event.preventDefault()
+            onNewDeck()
+          }}
+        >
+          New deck
+        </a>
         <div className="flex gap-2">
           <button
             className="btn btn-outline min-h-11 px-3"

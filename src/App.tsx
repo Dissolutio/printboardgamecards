@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 import AppHeader from './components/AppHeader.tsx'
+import StartScreen from './components/StartScreen.tsx'
 import CalibrationPanel from './components/CalibrationPanel.tsx'
 import CardList from './components/CardList.tsx'
 import ExportPanel from './components/ExportPanel.tsx'
 import PrintSettingsPanel from './components/PrintSettingsPanel.tsx'
 import PrintPreview from './components/PrintPreview.tsx'
 import SelectedCardEditor from './components/SelectedCardEditor.tsx'
-import StarterDeckPanel from './components/StarterDeckPanel.tsx'
 import Toast from './components/Toast.tsx'
+import { useConfirm } from './components/useConfirm.tsx'
 import { useCards } from './hooks/useCards.ts'
 import { prepareSideCrop, useProjectIo } from './hooks/useProjectIo.tsx'
 import { usePrinterProfiles } from './hooks/usePrinterProfiles.ts'
@@ -16,10 +17,12 @@ import {
   type PresetName,
 } from './hooks/useSettings.ts'
 import {
+  createCard,
   sideProcessedSource,
   sideSource,
   withSideCrop,
 } from './lib/cardOps.ts'
+import { chooseScreen, type AppScreen } from './lib/startScreen.ts'
 import {
   calculateGrid,
   calculateTightGrid,
@@ -91,12 +94,14 @@ function App() {
     exportMode,
     pieceOrientation,
   }
+  const { confirm, dialog: confirmDialog } = useConfirm()
   const cardState = useCards({
     appliedPreset,
     presetInProgress,
     projectOperationInProgress,
     starterDeckOperationInProgress,
     isExporting,
+    confirm,
     settings: initialHistorySettings,
     restoreSettings: (settings) => {
       setPresetName(settings.presetName)
@@ -135,6 +140,11 @@ function App() {
     handleProcessedImage,
     handleError,
   } = cardState
+  const [screen, setScreen] = useState<AppScreen>(() => chooseScreen(cards))
+
+  useEffect(() => {
+    if (chooseScreen(cards) === 'workspace') setScreen('workspace')
+  }, [cards])
 
   function updateSettings(next: Partial<HistorySettings>) {
     const updated = cardState.commitSettings(next)
@@ -252,8 +262,15 @@ function App() {
     isExporting,
     setIsExporting,
     setIsChangingPreset,
-    onProjectOpened: () => showUndoToast('undo.toast.projectOpened'),
-    onStarterDeckCreated: () => showUndoToast('undo.toast.starterDeckCreated'),
+    confirm,
+    onProjectOpened: () => {
+      setScreen('workspace')
+      showUndoToast('undo.toast.projectOpened')
+    },
+    onStarterDeckCreated: () => {
+      setScreen('workspace')
+      showUndoToast('undo.toast.starterDeckCreated')
+    },
     pageCount,
     paper,
     grid,
@@ -271,6 +288,7 @@ function App() {
     starterDeckError,
     exportError,
     setExportError,
+    confirm,
     handleSaveProject,
     handleLoadProject,
     handleCreateStarterDeck,
@@ -464,32 +482,68 @@ function App() {
     })()
   }
 
-  return (
-    <main className="min-h-screen bg-base-200 px-4 py-8 text-base-content sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-7xl">
-        <AppHeader
-          paperName={paperName}
-          canUndo={cardState.canUndo}
-          canRedo={cardState.canRedo}
-          historyDisabled={historyBusy}
-          undoLabel={translate('undo.button')}
-          redoLabel={translate('redo.button')}
-          onUndo={cardState.undo}
-          onRedo={cardState.redo}
-        />
+  async function handleStartNewDeck() {
+    const hasImages = cards.some(
+      (card) =>
+        card.frontSrc ||
+        card.backSrc ||
+        card.frontProcessedSrc ||
+        card.backProcessedSrc,
+    )
+    if (
+      hasImages &&
+      !(await confirm({
+        title: 'Start a new deck?',
+        message: 'This replaces the cards you have now. You can undo this.',
+        confirmLabel: 'Start new deck',
+      }))
+    ) {
+      return
+    }
 
-        <StarterDeckPanel
+    const nextCard = createCard(crypto.randomUUID())
+    replaceCards([nextCard], { label: 'starterDeckCreated' })
+    setSelectedId(nextCard.id)
+    setErrors({ front: undefined, back: undefined })
+    setScreen('start')
+    showUndoToast('undo.toast.starterDeckCreated')
+  }
+
+  return (
+    <>
+      {screen === 'start' ? (
+        <StartScreen
           cardSize={cardSize}
+          presetName={presetName}
           paperName={paperName}
+          exportMode={exportMode}
+          pieceOrientation={pieceOrientation}
           disabled={isProjectControlsDisabled}
           isLoadingManifest={isLoadingStarterManifest}
           isProcessing={isCreatingStarterDeck}
           progress={starterDeckProgress}
           error={starterDeckError}
           onCreate={handleCreateStarterDeck}
+          onOpenProject={handleLoadProject}
+          projectFileInput={projectFileInput}
+          onStartWithOneCard={() => setScreen('workspace')}
         />
+      ) : (
+        <main className="min-h-screen bg-base-200 px-4 py-8 text-base-content sm:px-6 lg:px-8">
+          <div className="mx-auto max-w-7xl">
+            <AppHeader
+              paperName={paperName}
+              canUndo={cardState.canUndo}
+              canRedo={cardState.canRedo}
+              historyDisabled={historyBusy}
+              undoLabel={translate('undo.button')}
+              redoLabel={translate('redo.button')}
+              onUndo={cardState.undo}
+              onRedo={cardState.redo}
+              onNewDeck={() => void handleStartNewDeck()}
+            />
 
-        <div inert={isProjectControlsDisabled}>
+            <div inert={isProjectControlsDisabled}>
         <PrintSettingsPanel
           presetName={presetName}
           paperName={paperName}
@@ -602,21 +656,24 @@ function App() {
           disabled={isProjectControlsDisabled}
           onQuantityStep={handleQuantityStep}
         />
-        </div>
-        <footer className="mt-8 text-center text-xs text-base-content/50">
-          <a
-            target="_blank"
-            rel="noopener noreferrer"
-            href="https://icons8.com/icon/A78RbSB5l7fM/cut"
-          >
-            Cut
-          </a>{' '}
-          icon by{' '}
-          <a target="_blank" rel="noopener noreferrer" href="https://icons8.com">
-            Icons8
-          </a>
-        </footer>
-      </div>
+            </div>
+            <footer className="mt-8 text-center text-xs text-base-content/50">
+              <a
+                target="_blank"
+                rel="noopener noreferrer"
+                href="https://icons8.com/icon/A78RbSB5l7fM/cut"
+              >
+                Cut
+              </a>{' '}
+              icon by{' '}
+              <a target="_blank" rel="noopener noreferrer" href="https://icons8.com">
+                Icons8
+              </a>
+            </footer>
+          </div>
+        </main>
+      )}
+      {confirmDialog}
       {toastMessage && (
         <Toast
           message={toastMessage}
@@ -624,7 +681,7 @@ function App() {
           onAction={undoFromToast}
         />
       )}
-    </main>
+    </>
   )
 }
 
