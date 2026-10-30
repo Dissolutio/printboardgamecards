@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ChangeEvent } from 'react'
+import { useRef, useState, type ChangeEvent } from 'react'
 import { pdf } from '@react-pdf/renderer'
 import CardEditor from './components/CardEditor.tsx'
 import CardList from './components/CardList.tsx'
@@ -6,16 +6,11 @@ import ExportPanel from './components/ExportPanel.tsx'
 import PrintSettingsPanel from './components/PrintSettingsPanel.tsx'
 import PrintPreview from './components/PrintPreview.tsx'
 import StarterDeckPanel, { type StarterBackChoice } from './components/StarterDeckPanel.tsx'
+import { useCards } from './hooks/useCards.ts'
 import { usePrinterProfiles } from './hooks/usePrinterProfiles.ts'
 import CalibrationDoc from './pdf/CalibrationDoc.tsx'
 import DuplexDoc from './pdf/DuplexDoc.tsx'
 import PrintAndGlueDoc from './pdf/PrintAndGlueDoc.tsx'
-import {
-  addCard,
-  deleteCard,
-  duplicateCard,
-  stepQuantity,
-} from './lib/deck.ts'
 import {
   createCard,
   downloadBlob,
@@ -44,17 +39,16 @@ import {
   hasCalibration,
   type ExportKind,
 } from './lib/printerProfiles.ts'
-import { planBackSync } from './lib/backSync.ts'
 import { parseMeasurement } from './lib/calibrationInput.ts'
+import { getImageType } from './lib/imageType.ts'
 import {
   expectedScaleGapSpaces,
   SHEET_WIDTH_MM,
 } from './lib/calibrationScale.ts'
-import { getImageType } from './lib/imageType.ts'
 import { loadImageSize, renderCrop } from './lib/renderCrop.ts'
 import { parseProject, serializeProject } from './lib/project.ts'
 import { findDisallowedSources } from './lib/sourcePolicy.ts'
-import { isSvgFile, isSvgUrl } from './lib/vectorSource.ts'
+import { isSvgUrl } from './lib/vectorSource.ts'
 import { BACK_DESIGNS, BACK_PALETTES, backSvgToDataUrl, generateBackSvg } from './lib/backDesigns.ts'
 import { parseDeckManifest, type DeckManifest } from './lib/deckManifest.ts'
 import { buildStarterCards } from './lib/starterDeck.ts'
@@ -84,8 +78,6 @@ const calibrationNumberFormat = new Intl.NumberFormat(undefined, {
 type PaperName = keyof typeof PAPER
 type PresetName = keyof typeof CARD_PRESETS
 type ExportMode = 'PRINT_GLUE' | 'DUPLEX'
-type QuantityDirection = -1 | 1
-
 function isPresetName(value: string): value is PresetName {
   return Object.prototype.hasOwnProperty.call(CARD_PRESETS, value)
 }
@@ -168,9 +160,6 @@ async function dataUrlToBlobUrl(url: string): Promise<string> {
 }
 
 function App() {
-  const [cards, setCards] = useState<Card[]>(() => [createCard('card-1')])
-  const cardsRef = useRef(cards)
-  const cardOperationTokens = useRef(new Map<string, number>())
   const presetGeneration = useRef(0)
   const presetInProgress = useRef(false)
   const projectOperationInProgress = useRef(false)
@@ -179,7 +168,6 @@ function App() {
   const starterDeckManifest = useRef<DeckManifest | undefined>(undefined)
   const appliedPreset = useRef<PresetName>('POKER')
   const projectFileInput = useRef<HTMLInputElement>(null)
-  const [selectedId, setSelectedId] = useState('card-1')
   const [presetName, setPresetName] = useState<PresetName>('POKER')
   const [isChangingPreset, setIsChangingPreset] = useState(false)
   const [isSavingProject, setIsSavingProject] = useState(false)
@@ -194,10 +182,36 @@ function App() {
   const [pieceOrientation, setPieceOrientation] = useState<PieceOrientation>('AUTO')
   const [isExporting, setIsExporting] = useState(false)
   const [exportError, setExportError] = useState<string>()
-  const [errors, setErrors] = useState<Record<CardSide, string | undefined>>({
-    front: undefined,
-    back: undefined,
+  const cardState = useCards({
+    appliedPreset,
+    presetInProgress,
+    projectOperationInProgress,
+    starterDeckOperationInProgress,
+    isExporting,
   })
+  const {
+    cards,
+    cardsRef,
+    selectedId,
+    setSelectedId,
+    errors,
+    setErrors,
+    replaceCards,
+    releaseUnusedUrls,
+    beginCardOperation,
+    isCurrentCardOperation,
+    updateCard,
+    handleQuantityStep,
+    handleAddCard,
+    handleDuplicateCard,
+    handleDeleteCard,
+    handleImageSelect,
+    handleImageRemove,
+    handleCropChange,
+    handleUseBackForEveryCard,
+    handleProcessedImage,
+    handleError,
+  } = cardState
 
   const paper = PAPER[paperName]
   const cardSize = CARD_PRESETS[presetName]
@@ -243,321 +257,6 @@ function App() {
       : layoutDuplexPages(cards, grid, exportCalibrationPt('ORIGINAL', activeProfile)).length
   const calibratedDownloadNeedsOffsets =
     pageCount > 0 && !hasCalibration(activeProfile) && !isProjectControlsDisabled
-
-  useEffect(
-    () => () => {
-      const urls = new Set(cardsRef.current.flatMap(objectUrls))
-      for (const url of urls) URL.revokeObjectURL(url)
-    },
-    [],
-  )
-
-  function replaceCards(nextCards: Card[]) {
-    cardsRef.current = nextCards
-    setCards(nextCards)
-  }
-
-  function revokeUnusedUrls(candidates: string[], remainingCards: Card[]) {
-    const retained = new Set(remainingCards.flatMap(objectUrls))
-    for (const url of new Set(candidates)) {
-      if (url.startsWith('blob:') && !retained.has(url)) URL.revokeObjectURL(url)
-    }
-  }
-
-  function updateCard(nextCard: Card) {
-    if (starterDeckOperationInProgress.current) return
-    const currentCards = cardsRef.current
-    const nextCards = currentCards.map((card) => (card.id === nextCard.id ? nextCard : card))
-    replaceCards(nextCards)
-  }
-
-  function handleQuantityStep(cardId: string, direction: QuantityDirection) {
-    if (starterDeckOperationInProgress.current) return
-    const currentCard = cardsRef.current.find((card) => card.id === cardId)
-    if (!currentCard) return
-
-    updateCard({
-      ...currentCard,
-      quantity: stepQuantity(currentCard.quantity, direction),
-    })
-  }
-
-  function beginCardOperation(cardId: string): number {
-    const token = (cardOperationTokens.current.get(cardId) ?? 0) + 1
-    cardOperationTokens.current.set(cardId, token)
-    return token
-  }
-
-  function isCurrentCardOperation(cardId: string, token: number): boolean {
-    return cardOperationTokens.current.get(cardId) === token
-  }
-
-  function handleAddCard() {
-    const card = createCard(crypto.randomUUID(), cardsRef.current.at(-1))
-    replaceCards(addCard(cardsRef.current, card))
-    setSelectedId(card.id)
-    setErrors({ front: undefined, back: undefined })
-  }
-
-  function handleDuplicateCard(cardId: string) {
-    const duplicateId = crypto.randomUUID()
-    const nextCards = duplicateCard(cardsRef.current, cardId, duplicateId)
-    replaceCards(nextCards)
-    setSelectedId(duplicateId)
-    setErrors({ front: undefined, back: undefined })
-  }
-
-  function handleDeleteCard(cardId: string) {
-    const currentCards = cardsRef.current
-    const removedCard = currentCards.find((card) => card.id === cardId)
-    const nextCards = deleteCard(currentCards, cardId)
-    replaceCards(nextCards)
-    if (removedCard) revokeUnusedUrls(objectUrls(removedCard), nextCards)
-
-    if (selectedId === cardId) {
-      setSelectedId(nextCards[0]?.id ?? '')
-      setErrors({ front: undefined, back: undefined })
-    }
-  }
-
-  function handleImageSelect(side: CardSide, file: File) {
-    const currentCard = cardsRef.current.find((card) => card.id === selectedId)
-    if (!currentCard) return
-
-    const sourceKey = side === 'front' ? 'frontSrc' : 'backSrc'
-    const vectorKey = side === 'front' ? 'frontIsVector' : 'backIsVector'
-    const processedKey = side === 'front' ? 'frontProcessedSrc' : 'backProcessedSrc'
-    const cropKey = side === 'front' ? 'frontCrop' : 'backCrop'
-    const operationToken = beginCardOperation(currentCard.id)
-    const presetForOperation = appliedPreset.current
-    const type = getImageType(file)
-    const sourceFile =
-      (!file.type || file.type.toLowerCase() === 'application/octet-stream') && type
-        ? new Blob([file], { type })
-        : file
-    const nextSourceUrl = URL.createObjectURL(sourceFile)
-    setErrors((current) => ({ ...current, [side]: undefined }))
-
-    void (async () => {
-      let nextProcessedUrl: string | undefined
-      try {
-        const imageSize = await loadImageSize(nextSourceUrl)
-        const operationCardSize = CARD_PRESETS[presetForOperation]
-        const areaSize = cropAreaSize(
-          operationCardSize,
-          DEFAULT_BLEED,
-          currentCard.bleedMode,
-        )
-        const crop = centeredMaximumCrop(imageSize, areaSize)
-        const blob = await renderCrop(nextSourceUrl, crop, areaSize)
-        nextProcessedUrl = URL.createObjectURL(blob)
-
-        const latestCard = cardsRef.current.find((card) => card.id === currentCard.id)
-        if (
-          !isCurrentCardOperation(currentCard.id, operationToken) ||
-          appliedPreset.current !== presetForOperation ||
-          !latestCard ||
-          latestCard[sourceKey] !== currentCard[sourceKey]
-        ) {
-          URL.revokeObjectURL(nextSourceUrl)
-          URL.revokeObjectURL(nextProcessedUrl)
-          return
-        }
-
-        const nextCard = {
-          ...latestCard,
-          [sourceKey]: nextSourceUrl,
-          [vectorKey]: isSvgFile(file),
-          [processedKey]: nextProcessedUrl,
-          [cropKey]: crop,
-        }
-        const nextCards = cardsRef.current.map((card) =>
-          card.id === latestCard.id ? nextCard : card,
-        )
-        replaceCards(nextCards)
-        revokeUnusedUrls(
-          [latestCard[sourceKey], latestCard[processedKey]].filter(
-            (url): url is string => url !== undefined,
-          ),
-          nextCards,
-        )
-      } catch (error) {
-        URL.revokeObjectURL(nextSourceUrl)
-        if (nextProcessedUrl) URL.revokeObjectURL(nextProcessedUrl)
-        if (isCurrentCardOperation(currentCard.id, operationToken)) {
-          setErrors((current) => ({
-            ...current,
-            [side]: error instanceof Error
-              ? error.message
-              : 'Could not process this image.',
-          }))
-        }
-      }
-    })()
-  }
-
-  function handleImageRemove(side: CardSide) {
-    const currentCard = cardsRef.current.find((card) => card.id === selectedId)
-    if (!currentCard) return
-
-    const sourceKey = side === 'front' ? 'frontSrc' : 'backSrc'
-    const vectorKey = side === 'front' ? 'frontIsVector' : 'backIsVector'
-    const processedKey = side === 'front' ? 'frontProcessedSrc' : 'backProcessedSrc'
-    const cropKey = side === 'front' ? 'frontCrop' : 'backCrop'
-    beginCardOperation(currentCard.id)
-
-    const nextCard = {
-      ...currentCard,
-      [sourceKey]: undefined,
-      [vectorKey]: false,
-      [processedKey]: undefined,
-      [cropKey]: undefined,
-    }
-    const nextCards = cardsRef.current.map((card) =>
-      card.id === currentCard.id ? nextCard : card,
-    )
-    replaceCards(nextCards)
-    revokeUnusedUrls(
-      [currentCard[sourceKey], currentCard[processedKey]].filter(
-        (url): url is string => url !== undefined,
-      ),
-      nextCards,
-    )
-    setErrors((current) => ({ ...current, [side]: undefined }))
-  }
-
-  function handleCropChange(side: CardSide, crop: PixelCropRect) {
-    if (starterDeckOperationInProgress.current) return
-    const currentCard = cardsRef.current.find((card) => card.id === selectedId)
-    if (!currentCard) return
-
-    const cropKey = side === 'front' ? 'frontCrop' : 'backCrop'
-    const processedKey = side === 'front' ? 'frontProcessedSrc' : 'backProcessedSrc'
-    beginCardOperation(currentCard.id)
-    const nextCard = { ...currentCard, [cropKey]: crop, [processedKey]: undefined }
-    const nextCards = cardsRef.current.map((card) =>
-      card.id === currentCard.id ? nextCard : card,
-    )
-    replaceCards(nextCards)
-    if (currentCard[processedKey]) {
-      revokeUnusedUrls([currentCard[processedKey]], nextCards)
-    }
-    setErrors((current) => ({ ...current, [side]: undefined }))
-  }
-
-  async function handleUseBackForEveryCard() {
-    const originalCards = cardsRef.current
-    const selected = originalCards.find((card) => card.id === selectedId)
-    if (
-      !selected?.backSrc ||
-      !selected.backCrop ||
-      presetInProgress.current ||
-      projectOperationInProgress.current ||
-      isExporting ||
-      starterDeckOperationInProgress.current
-    ) {
-      return
-    }
-
-    const plan = planBackSync(selected, originalCards)
-    if (plan.cardsToUpdate.length === 0) return
-    if (
-      plan.needsConfirmation &&
-      !window.confirm('Replace the back of every other card with this back? This cannot be undone.')
-    ) {
-      return
-    }
-
-    const processedSource = selected.backProcessedSrc
-    if (!processedSource) {
-      setErrors((current) => ({
-        ...current,
-        back: 'Could not read the selected back image. Try again.',
-      }))
-      return
-    }
-
-    const tokens = new Map(
-      originalCards.map((card) => [card.id, beginCardOperation(card.id)]),
-    )
-    const presetForOperation = appliedPreset.current
-    const generatedUrls: string[] = []
-    const selectedBackCrop = { ...selected.backCrop }
-    try {
-      const response = await fetch(processedSource)
-      if (!response.ok) throw new Error('Could not read the selected back image.')
-      const processedBlob = await response.blob()
-      const nextCards = originalCards.map((card) => {
-        if (card.id === selected.id) return card
-        const nextProcessedSource = URL.createObjectURL(
-          new Blob([processedBlob], { type: processedBlob.type }),
-        )
-        generatedUrls.push(nextProcessedSource)
-        return {
-          ...card,
-          backSrc: selected.backSrc,
-          backCrop: { ...selectedBackCrop },
-          backIsVector: selected.backIsVector,
-          backProcessedSrc: nextProcessedSource,
-        }
-      })
-
-      if (
-        cardsRef.current !== originalCards ||
-        appliedPreset.current !== presetForOperation ||
-        originalCards.some(
-          (card) => {
-            const token = tokens.get(card.id)
-            return token === undefined || !isCurrentCardOperation(card.id, token)
-          },
-        )
-      ) {
-        generatedUrls.forEach(URL.revokeObjectURL)
-        return
-      }
-
-      replaceCards(nextCards)
-      revokeUnusedUrls(
-        plan.cardsToUpdate.flatMap((card) => [
-          card.backSrc,
-          card.backProcessedSrc,
-        ].filter((url): url is string => url !== undefined)),
-        nextCards,
-      )
-      setErrors((current) => ({ ...current, back: undefined }))
-    } catch {
-      generatedUrls.forEach(URL.revokeObjectURL)
-      setErrors((current) => ({
-        ...current,
-        back: 'Could not read the selected back image. Try again.',
-      }))
-    }
-  }
-
-  function handleProcessedImage(side: CardSide, blob: Blob) {
-    if (starterDeckOperationInProgress.current) return
-    const currentCard = cardsRef.current.find((card) => card.id === selectedId)
-    if (!currentCard) return
-    const sourceKey = side === 'front' ? 'frontSrc' : 'backSrc'
-    const cropKey = side === 'front' ? 'frontCrop' : 'backCrop'
-    const processedKey = side === 'front' ? 'frontProcessedSrc' : 'backProcessedSrc'
-    if (!currentCard[sourceKey] || !currentCard[cropKey]) return
-
-    const nextProcessedUrl = URL.createObjectURL(blob)
-    const nextCard = { ...currentCard, [processedKey]: nextProcessedUrl }
-    const nextCards = cardsRef.current.map((card) =>
-      card.id === currentCard.id ? nextCard : card,
-    )
-    replaceCards(nextCards)
-    revokeUnusedUrls(
-      currentCard[processedKey] ? [currentCard[processedKey]] : [],
-      nextCards,
-    )
-  }
-
-  function handleError(side: CardSide, message: string | undefined) {
-    setErrors((current) => ({ ...current, [side]: message }))
-  }
 
   async function handlePresetChange(nextPreset: PresetName) {
     if (
@@ -617,7 +316,7 @@ function App() {
       setPresetName(nextPreset)
       appliedPreset.current = nextPreset
       replaceCards(nextCards)
-      revokeUnusedUrls(
+      releaseUnusedUrls(
         originalCards.flatMap((card) => [
           card.frontProcessedSrc,
           card.backProcessedSrc,
@@ -703,7 +402,7 @@ function App() {
           card.id === cardId ? nextCard : card,
         )
         replaceCards(nextCards)
-        revokeUnusedUrls(
+        releaseUnusedUrls(
           SIDES.map((side) => sideProcessedSource(latestCard, side)).filter(
             (url): url is string => url !== undefined,
           ),
@@ -894,7 +593,7 @@ function App() {
       replaceCards(cardsToApply)
       setSelectedId(cardsToApply[0].id)
       setErrors({ front: undefined, back: undefined })
-      revokeUnusedUrls(originalCards.flatMap(objectUrls), cardsToApply)
+      releaseUnusedUrls(originalCards.flatMap(objectUrls), cardsToApply)
     } catch (error) {
       generatedUrls.forEach(URL.revokeObjectURL)
       setExportError(
@@ -1080,7 +779,7 @@ function App() {
       replaceCards(completedCards)
       setSelectedId(completedCards[0].id)
       setErrors({ front: undefined, back: undefined })
-      revokeUnusedUrls(originalCards.flatMap(objectUrls), completedCards)
+      releaseUnusedUrls(originalCards.flatMap(objectUrls), completedCards)
       setExportError(undefined)
       created = true
     } catch (error) {
