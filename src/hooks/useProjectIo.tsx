@@ -50,6 +50,7 @@ import {
 } from '../lib/layout.ts'
 import { DEFAULT_BLEED, PAPER } from '../lib/geometry.ts'
 import type { BleedMode, Card, CardSide, PixelCropRect } from '../types.ts'
+import type { ReplaceCardsOptions } from './useCards.ts'
 
 type PresetName = keyof typeof CARD_PRESETS
 type PaperName = keyof typeof PAPER
@@ -142,7 +143,7 @@ async function dataUrlToBlobUrl(url: string): Promise<string> {
 type UseProjectIoOptions = {
   cards: Card[]
   cardsRef: MutableRefObject<Card[]>
-  replaceCards: (cards: Card[]) => void
+  replaceCards: (cards: Card[], options?: ReplaceCardsOptions) => void
   releaseUnusedUrls: (candidates: string[], remainingCards: Card[]) => void
   beginCardOperation: (cardId: string) => number
   setSelectedId: Setter<string>
@@ -163,6 +164,8 @@ type UseProjectIoOptions = {
   isExporting: boolean
   setIsExporting: Setter<boolean>
   setIsChangingPreset: Setter<boolean>
+  onProjectOpened: () => void
+  onStarterDeckCreated: () => void
   pageCount: number
   paper: Size
   grid: Grid
@@ -197,6 +200,8 @@ export function useProjectIo(options: UseProjectIoOptions) {
     isExporting,
     setIsExporting,
     setIsChangingPreset,
+    onProjectOpened,
+    onStarterDeckCreated,
     pageCount,
     paper,
     grid,
@@ -384,10 +389,14 @@ export function useProjectIo(options: UseProjectIoOptions) {
       setExportMode(nextSettings.exportMode)
       setPieceOrientation(nextSettings.pieceOrientation)
       appliedPresetRef.current = nextSettings.presetName
-      replaceCards(cardsToApply)
+      replaceCards(cardsToApply, {
+        settings: nextSettings,
+        label: 'projectOpened',
+      })
       setSelectedId(cardsToApply[0].id)
       setErrors({ front: undefined, back: undefined })
       releaseUnusedUrls(originalCards.flatMap(objectUrls), cardsToApply)
+      onProjectOpened()
     } catch (error) {
       generatedUrls.forEach(URL.revokeObjectURL)
       setExportError(
@@ -570,11 +579,12 @@ export function useProjectIo(options: UseProjectIoOptions) {
       }
 
       for (const card of originalCards) beginCardOperation(card.id)
-      replaceCards(completedCards)
+      replaceCards(completedCards, { label: 'starterDeckCreated' })
       setSelectedId(completedCards[0].id)
       setErrors({ front: undefined, back: undefined })
       releaseUnusedUrls(originalCards.flatMap(objectUrls), completedCards)
       setExportError(undefined)
+      onStarterDeckCreated()
       created = true
     } catch (error) {
       generatedUrls.forEach(URL.revokeObjectURL)

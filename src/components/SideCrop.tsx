@@ -36,7 +36,13 @@ export type SideCropProps = {
   onImageSelect: (side: CardSide, file: File) => void
   onImageRemove: (side: CardSide) => void
   onCropChange: (side: CardSide, crop: PixelCropRect) => void
-  onProcessedImage: (side: CardSide, blob: Blob) => void
+  onProcessedImage: (
+    cardId: string,
+    side: CardSide,
+    blob: Blob,
+    crop: PixelCropRect,
+    source: string,
+  ) => void
   onError: (side: CardSide, message: string | undefined) => void
   onBackgroundToggle: (side: CardSide, enabled: boolean) => void
   onBackgroundChange: (side: CardSide, color: string) => void
@@ -144,7 +150,7 @@ export function SideCrop({
       .then((blob) => {
         if (currentRenderId !== renderId.current) return
         onError(side, undefined)
-        onProcessedImage(side, blob)
+        onProcessedImage(card.id, side, blob, nextCrop, source)
       })
       .catch((renderError: unknown) => {
         if (currentRenderId !== renderId.current) return

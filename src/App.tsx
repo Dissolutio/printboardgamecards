@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import AppHeader from './components/AppHeader.tsx'
 import CalibrationPanel from './components/CalibrationPanel.tsx'
 import CardList from './components/CardList.tsx'
@@ -7,6 +7,7 @@ import PrintSettingsPanel from './components/PrintSettingsPanel.tsx'
 import PrintPreview from './components/PrintPreview.tsx'
 import SelectedCardEditor from './components/SelectedCardEditor.tsx'
 import StarterDeckPanel from './components/StarterDeckPanel.tsx'
+import Toast from './components/Toast.tsx'
 import { useCards } from './hooks/useCards.ts'
 import { prepareSideCrop, useProjectIo } from './hooks/useProjectIo.tsx'
 import { usePrinterProfiles } from './hooks/usePrinterProfiles.ts'
@@ -35,9 +36,13 @@ import {
   layoutPrintAndGlue,
 } from './lib/layout.ts'
 import type { BleedMode, CardSide } from './types.ts'
+import { createTranslator } from './i18n/messages.ts'
+import { en } from './i18n/en.ts'
+import type { HistorySettings } from './lib/history.ts'
 
 const SIDES: CardSide[] = ['front', 'back']
 const PAPER_OPTIONS: (keyof typeof PAPER)[] = ['LETTER', 'A4']
+const translate = createTranslator(en, 'en')
 function isPresetName(value: string): value is PresetName {
   return Object.prototype.hasOwnProperty.call(CARD_PRESETS, value)
 }
@@ -61,12 +66,51 @@ function App() {
   } = useSettings()
   const [isChangingPreset, setIsChangingPreset] = useState(false)
   const [isExporting, setIsExporting] = useState(false)
+  const [toastMessage, setToastMessage] = useState<string>()
+  const toastTimer = useRef<number | undefined>(undefined)
+  const historyBusyRef = useRef(false)
+  const showUndoToast = (
+    key:
+      | 'undo.toast.cardDeleted'
+      | 'undo.toast.imageRemoved'
+      | 'undo.toast.backsReplaced'
+      | 'undo.toast.projectOpened'
+      | 'undo.toast.starterDeckCreated',
+    params?: { count: number },
+  ) => {
+    setToastMessage(translate(key, params))
+    if (toastTimer.current !== undefined) window.clearTimeout(toastTimer.current)
+    toastTimer.current = window.setTimeout(() => {
+      setToastMessage(undefined)
+      toastTimer.current = undefined
+    }, 8000)
+  }
+  const initialHistorySettings: HistorySettings = {
+    presetName,
+    paperName,
+    exportMode,
+    pieceOrientation,
+  }
   const cardState = useCards({
     appliedPreset,
     presetInProgress,
     projectOperationInProgress,
     starterDeckOperationInProgress,
     isExporting,
+    settings: initialHistorySettings,
+    restoreSettings: (settings) => {
+      setPresetName(settings.presetName)
+      setPaperName(settings.paperName)
+      setExportMode(settings.exportMode)
+      setPieceOrientation(settings.pieceOrientation)
+      appliedPreset.current = settings.presetName
+    },
+    isHistoryBusy: () =>
+      starterDeckOperationInProgress.current ||
+      projectOperationInProgress.current ||
+      presetInProgress.current ||
+      isExporting,
+    showUndoToast,
   })
   const {
     cards,
@@ -91,6 +135,58 @@ function App() {
     handleProcessedImage,
     handleError,
   } = cardState
+
+  function updateSettings(next: Partial<HistorySettings>) {
+    const updated = cardState.commitSettings(next)
+    if (next.presetName !== undefined) setPresetName(updated.presetName)
+    if (next.paperName !== undefined) setPaperName(updated.paperName)
+    if (next.exportMode !== undefined) setExportMode(updated.exportMode)
+    if (next.pieceOrientation !== undefined) {
+      setPieceOrientation(updated.pieceOrientation)
+    }
+  }
+
+  function undoFromToast() {
+    setToastMessage(undefined)
+    if (toastTimer.current !== undefined) window.clearTimeout(toastTimer.current)
+    toastTimer.current = undefined
+    cardState.undo()
+  }
+
+  useEffect(() => {
+    function handleHistoryShortcut(event: KeyboardEvent) {
+      if (!(event.ctrlKey || event.metaKey) || event.altKey) return
+      const key = event.key.toLowerCase()
+      const isUndo = key === 'z' && !event.shiftKey
+      const isRedo = (key === 'z' && event.shiftKey) || (key === 'y' && !event.shiftKey)
+      if (!isUndo && !isRedo) return
+
+      const target = event.target
+      if (target instanceof HTMLElement) {
+        const field = target.closest('input, textarea, select, [contenteditable="true"]')
+        if (field instanceof HTMLInputElement) {
+          if (['text', 'number', 'color'].includes(field.type)) return
+        } else if (field) {
+          return
+        }
+      }
+      if (historyBusyRef.current) return
+
+      event.preventDefault()
+      if (isUndo) cardState.undo()
+      else cardState.redo()
+    }
+
+    window.addEventListener('keydown', handleHistoryShortcut)
+    return () => window.removeEventListener('keydown', handleHistoryShortcut)
+  }, [cardState])
+
+  useEffect(
+    () => () => {
+      if (toastTimer.current !== undefined) window.clearTimeout(toastTimer.current)
+    },
+    [],
+  )
 
   const paper = PAPER[paperName]
   const cardSize = CARD_PRESETS[presetName]
@@ -156,6 +252,8 @@ function App() {
     isExporting,
     setIsExporting,
     setIsChangingPreset,
+    onProjectOpened: () => showUndoToast('undo.toast.projectOpened'),
+    onStarterDeckCreated: () => showUndoToast('undo.toast.starterDeckCreated'),
     pageCount,
     paper,
     grid,
@@ -180,6 +278,15 @@ function App() {
     handleDownload,
     handleDownloadCalibrationSheet,
   } = projectIo
+  const historyBusy =
+    isChangingPreset ||
+    isSavingProject ||
+    isLoadingProject ||
+    isCreatingStarterDeck ||
+    isExporting
+  useEffect(() => {
+    historyBusyRef.current = historyBusy
+  }, [historyBusy])
   const isProjectControlsDisabled =
     isChangingPreset || isSavingProject || isLoadingProject || isExporting || isCreatingStarterDeck
   const calibratedDownloadNeedsOffsets =
@@ -242,7 +349,15 @@ function App() {
 
       setPresetName(nextPreset)
       appliedPreset.current = nextPreset
-      replaceCards(nextCards)
+      replaceCards(nextCards, {
+        settings: {
+          presetName: nextPreset,
+          paperName,
+          exportMode,
+          pieceOrientation,
+        },
+        label: 'presetChanged',
+      })
       releaseUnusedUrls(
         originalCards.flatMap((card) => [
           card.frontProcessedSrc,
@@ -352,7 +467,16 @@ function App() {
   return (
     <main className="min-h-screen bg-base-200 px-4 py-8 text-base-content sm:px-6 lg:px-8">
       <div className="mx-auto max-w-7xl">
-        <AppHeader paperName={paperName} />
+        <AppHeader
+          paperName={paperName}
+          canUndo={cardState.canUndo}
+          canRedo={cardState.canRedo}
+          historyDisabled={historyBusy}
+          undoLabel={translate('undo.button')}
+          redoLabel={translate('redo.button')}
+          onUndo={cardState.undo}
+          onRedo={cardState.redo}
+        />
 
         <StarterDeckPanel
           cardSize={cardSize}
@@ -378,15 +502,18 @@ function App() {
           }}
           onPaperChange={(value) => {
             const selectedPaper = PAPER_OPTIONS.find((option) => option === value)
-            if (selectedPaper) setPaperName(selectedPaper)
+            if (selectedPaper) updateSettings({ paperName: selectedPaper })
           }}
           onExportModeChange={(value) =>
-            setExportMode(value === 'DUPLEX' ? 'DUPLEX' : 'PRINT_GLUE')
+            updateSettings({
+              exportMode: value === 'DUPLEX' ? 'DUPLEX' : 'PRINT_GLUE',
+            })
           }
           onPieceOrientationChange={(value) =>
-            setPieceOrientation(
-              value === 'UPRIGHT' || value === 'ROTATED' ? value : 'AUTO',
-            )
+            updateSettings({
+              pieceOrientation:
+                value === 'UPRIGHT' || value === 'ROTATED' ? value : 'AUTO',
+            })
           }
         />
 
@@ -490,6 +617,13 @@ function App() {
           </a>
         </footer>
       </div>
+      {toastMessage && (
+        <Toast
+          message={toastMessage}
+          actionLabel={translate('undo.button')}
+          onAction={undoFromToast}
+        />
+      )}
     </main>
   )
 }

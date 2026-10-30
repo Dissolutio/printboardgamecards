@@ -52,6 +52,7 @@ export default function ExportPanel({
           <button
             className="btn btn-primary"
             type="button"
+            data-download-button
             disabled={pageCount === 0 || disabled}
             onClick={onDownload}
           >
@@ -62,6 +63,7 @@ export default function ExportPanel({
             <button
               className="btn btn-primary"
               type="button"
+              data-download-button
               disabled={pageCount === 0 || disabled}
               onClick={() => onDownloadDuplex('ORIGINAL')}
             >
@@ -70,6 +72,7 @@ export default function ExportPanel({
             <button
               className="btn btn-outline"
               type="button"
+              data-download-button
               disabled={pageCount === 0 || !hasCalibration(activeProfile) || disabled}
               title={
                 calibratedDownloadNeedsOffsets

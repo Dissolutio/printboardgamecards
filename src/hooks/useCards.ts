@@ -1,4 +1,10 @@
-import { useEffect, useRef, useState, type MutableRefObject } from 'react'
+import {
+  useEffect,
+  useRef,
+  useState,
+  type MutableRefObject,
+  type SetStateAction,
+} from 'react'
 import {
   addCard,
   deleteCard,
@@ -10,21 +16,44 @@ import {
   CARD_PRESETS,
   DEFAULT_BLEED,
 } from '../lib/geometry.ts'
-import { cropAreaSize } from '../lib/crop.ts'
+import { cropAreaSize, sameCropRect } from '../lib/crop.ts'
 import { centeredMaximumCrop } from '../lib/cropConvert.ts'
 import { planBackSync } from '../lib/backSync.ts'
 import { getImageType } from '../lib/imageType.ts'
 import { loadImageSize, renderCrop } from '../lib/renderCrop.ts'
 import { isSvgFile } from '../lib/vectorSource.ts'
+import {
+  canRedo as historyCanRedo,
+  canUndo as historyCanUndo,
+  commit as commitHistory,
+  createHistory,
+  redo as redoHistory,
+  releasedHistoryUrls,
+  replacePresent,
+  retainedUrls,
+  undo as undoHistory,
+  unusedBlobUrls,
+  type History,
+  type HistorySettings,
+} from '../lib/history.ts'
 import type { Card, CardSide, PixelCropRect } from '../types.ts'
 
 type PresetName = keyof typeof CARD_PRESETS
 type QuantityDirection = -1 | 1
+export type ReplaceCardsOptions = {
+  settings?: HistorySettings
+  history?: 'commit' | 'replacePresent' | 'none'
+  label?: string
+  coalesceKey?: string
+}
 
-function revokeUnusedUrls(candidates: string[], remainingCards: Card[]) {
-  const retained = new Set(remainingCards.flatMap(objectUrls))
-  for (const url of new Set(candidates)) {
-    if (url.startsWith('blob:') && !retained.has(url)) URL.revokeObjectURL(url)
+function revokeUnusedUrls(
+  candidates: string[],
+  remainingCards: Card[],
+  history: History,
+) {
+  for (const url of unusedBlobUrls(candidates, remainingCards, history)) {
+    URL.revokeObjectURL(url)
   }
 }
 
@@ -34,44 +63,196 @@ export function useCards({
   projectOperationInProgress,
   starterDeckOperationInProgress,
   isExporting,
+  settings,
+  restoreSettings,
+  isHistoryBusy,
+  showUndoToast,
 }: {
   appliedPreset: MutableRefObject<PresetName>
   presetInProgress: MutableRefObject<boolean>
   projectOperationInProgress: MutableRefObject<boolean>
   starterDeckOperationInProgress: MutableRefObject<boolean>
   isExporting: boolean
+  settings: HistorySettings
+  restoreSettings: (settings: HistorySettings) => void
+  isHistoryBusy: () => boolean
+  showUndoToast: (
+    key:
+      | 'undo.toast.cardDeleted'
+      | 'undo.toast.imageRemoved'
+      | 'undo.toast.backsReplaced',
+    params?: { count: number },
+  ) => void
 }) {
   const [cards, setCards] = useState<Card[]>(() => [createCard('card-1')])
   const cardsRef = useRef(cards)
   const cardOperationTokens = useRef(new Map<string, number>())
-  const [selectedId, setSelectedId] = useState('card-1')
+  const [selectedId, setSelectedIdState] = useState('card-1')
+  const selectedIdRef = useRef(selectedId)
+  const [history, setHistory] = useState(() =>
+    createHistory({ cards, settings }),
+  )
+  const historyRef = useRef(history)
+  const settingsRef = useRef(settings)
+  const beforeSelectionBySnapshot = useRef(
+    new WeakMap<History['present'], string>(),
+  )
+  const afterSelectionBySnapshot = useRef(
+    new WeakMap<History['present'], string>(),
+  )
+  afterSelectionBySnapshot.current.set(history.present, selectedId)
   const [errors, setErrors] = useState<Record<CardSide, string | undefined>>({
     front: undefined,
     back: undefined,
   })
 
+  settingsRef.current = settings
+
   useEffect(
     () => () => {
-      const urls = new Set(cardsRef.current.flatMap(objectUrls))
-      for (const url of urls) URL.revokeObjectURL(url)
+      const urls = new Set([
+        ...cardsRef.current.flatMap(objectUrls),
+        ...retainedUrls(historyRef.current),
+      ])
+      for (const url of urls) {
+        if (url.startsWith('blob:')) URL.revokeObjectURL(url)
+      }
     },
     [],
   )
 
-  function replaceCards(nextCards: Card[]) {
+  function setSelectedId(value: SetStateAction<string>) {
+    const nextId =
+      typeof value === 'function' ? value(selectedIdRef.current) : value
+    selectedIdRef.current = nextId
+    setSelectedIdState(nextId)
+    afterSelectionBySnapshot.current.set(historyRef.current.present, nextId)
+  }
+
+  function releaseDroppedHistoryUrls(previous: History, next: History, nextCards: Card[]) {
+    for (const url of releasedHistoryUrls(previous, next, nextCards)) {
+      URL.revokeObjectURL(url)
+    }
+  }
+
+  function updateHistory(nextHistory: History, nextCards: Card[]) {
+    const previousHistory = historyRef.current
+    historyRef.current = nextHistory
+    setHistory(nextHistory)
+    releaseDroppedHistoryUrls(previousHistory, nextHistory, nextCards)
+  }
+
+  function replaceCards(
+    nextCards: Card[],
+    options: ReplaceCardsOptions = {},
+  ) {
+    const nextSettings = options.settings ?? settingsRef.current
+    const snapshot = { cards: nextCards, settings: nextSettings }
+    if (options.history === 'replacePresent') {
+      const previousHistory = historyRef.current
+      const nextHistory = replacePresent(previousHistory, snapshot)
+      if (nextHistory.present !== previousHistory.present) {
+        beforeSelectionBySnapshot.current.set(
+          nextHistory.present,
+          beforeSelectionBySnapshot.current.get(previousHistory.present) ??
+            selectedIdRef.current,
+        )
+        afterSelectionBySnapshot.current.set(
+          nextHistory.present,
+          afterSelectionBySnapshot.current.get(previousHistory.present) ??
+            selectedIdRef.current,
+        )
+      }
+      updateHistory(nextHistory, nextCards)
+    } else if (options.history !== 'none') {
+      const previousHistory = historyRef.current
+      const now = Date.now()
+      const nextHistory = commitHistory(previousHistory, snapshot, {
+        label: options.label,
+        coalesceKey: options.coalesceKey,
+        now,
+      })
+      if (nextHistory !== previousHistory) {
+        const coalesces =
+          options.coalesceKey !== undefined &&
+          options.coalesceKey === previousHistory.lastCommit?.coalesceKey &&
+          now >= previousHistory.lastCommit.now &&
+          now - previousHistory.lastCommit.now <= 800
+        beforeSelectionBySnapshot.current.set(
+          nextHistory.present,
+          coalesces
+            ? beforeSelectionBySnapshot.current.get(previousHistory.present) ??
+                selectedIdRef.current
+            : selectedIdRef.current,
+        )
+        afterSelectionBySnapshot.current.set(
+          nextHistory.present,
+          selectedIdRef.current,
+        )
+        updateHistory(nextHistory, nextCards)
+      }
+    }
+    settingsRef.current = nextSettings
     cardsRef.current = nextCards
     setCards(nextCards)
   }
 
   function releaseUnusedUrls(candidates: string[], remainingCards: Card[]) {
-    revokeUnusedUrls(candidates, remainingCards)
+    revokeUnusedUrls(candidates, remainingCards, historyRef.current)
+  }
+
+  function commitSettings(nextSettings: Partial<HistorySettings>) {
+    const updatedSettings = { ...settingsRef.current, ...nextSettings }
+    replaceCards(cardsRef.current, { settings: updatedSettings })
+    return updatedSettings
+  }
+
+  function restoreHistory(direction: 'undo' | 'redo') {
+    if (isHistoryBusy()) return
+    const previousHistory = historyRef.current
+    const nextHistory =
+      direction === 'undo'
+        ? undoHistory(previousHistory)
+        : redoHistory(previousHistory)
+    if (nextHistory === previousHistory) return
+
+    const selected =
+      direction === 'undo'
+        ? beforeSelectionBySnapshot.current.get(previousHistory.present)
+        : afterSelectionBySnapshot.current.get(nextHistory.present)
+    const selectedIdToRestore =
+      selected && nextHistory.present.cards.some((card) => card.id === selected)
+        ? selected
+        : (nextHistory.present.cards[0]?.id ?? '')
+    cardsRef.current = nextHistory.present.cards
+    setCards(nextHistory.present.cards)
+    settingsRef.current = nextHistory.present.settings
+    updateHistory(nextHistory, nextHistory.present.cards)
+    restoreSettings(nextHistory.present.settings)
+    setSelectedId(selectedIdToRestore)
+    setErrors({ front: undefined, back: undefined })
   }
 
   function updateCard(nextCard: Card) {
     if (starterDeckOperationInProgress.current) return
     const currentCards = cardsRef.current
+    const currentCard = currentCards.find((card) => card.id === nextCard.id)
     const nextCards = currentCards.map((card) => (card.id === nextCard.id ? nextCard : card))
-    replaceCards(nextCards)
+    let coalesceKey: string | undefined
+    if (currentCard?.quantity !== nextCard.quantity) {
+      coalesceKey = `${nextCard.id}:quantity`
+    } else if (currentCard?.bleedColor !== nextCard.bleedColor) {
+      coalesceKey = `${nextCard.id}:bleedColor`
+    } else {
+      for (const side of ['front', 'back'] as const) {
+        const backgroundKey = side === 'front' ? 'frontBackground' : 'backBackground'
+        if (currentCard?.[backgroundKey].color !== nextCard[backgroundKey].color) {
+          coalesceKey = `${nextCard.id}:${side}Background.color`
+          break
+        }
+      }
+    }
+    replaceCards(nextCards, { coalesceKey })
   }
 
   function handleQuantityStep(cardId: string, direction: QuantityDirection) {
@@ -114,7 +295,8 @@ export function useCards({
     const currentCards = cardsRef.current
     const removedCard = currentCards.find((card) => card.id === cardId)
     const nextCards = deleteCard(currentCards, cardId)
-    replaceCards(nextCards)
+    replaceCards(nextCards, { label: 'cardDeleted' })
+    if (removedCard) showUndoToast('undo.toast.cardDeleted')
     if (removedCard) releaseUnusedUrls(objectUrls(removedCard), nextCards)
 
     if (selectedId === cardId) {
@@ -219,7 +401,8 @@ export function useCards({
     const nextCards = cardsRef.current.map((card) =>
       card.id === currentCard.id ? nextCard : card,
     )
-    replaceCards(nextCards)
+    replaceCards(nextCards, { label: 'imageRemoved' })
+    showUndoToast('undo.toast.imageRemoved')
     releaseUnusedUrls(
       [currentCard[sourceKey], currentCard[processedKey]].filter(
         (url): url is string => url !== undefined,
@@ -241,7 +424,9 @@ export function useCards({
     const nextCards = cardsRef.current.map((card) =>
       card.id === currentCard.id ? nextCard : card,
     )
-    replaceCards(nextCards)
+    replaceCards(nextCards, {
+      coalesceKey: `${currentCard.id}:${side}Crop`,
+    })
     if (currentCard[processedKey]) {
       releaseUnusedUrls([currentCard[processedKey]], nextCards)
     }
@@ -319,7 +504,12 @@ export function useCards({
         return
       }
 
-      replaceCards(nextCards)
+      replaceCards(nextCards, {
+        label: 'backsReplaced',
+      })
+      showUndoToast('undo.toast.backsReplaced', {
+        count: plan.cardsToUpdate.length,
+      })
       releaseUnusedUrls(
         plan.cardsToUpdate.flatMap((card) => [
           card.backSrc,
@@ -337,21 +527,33 @@ export function useCards({
     }
   }
 
-  function handleProcessedImage(side: CardSide, blob: Blob) {
+  function handleProcessedImage(
+    cardId: string,
+    side: CardSide,
+    blob: Blob,
+    renderedCrop: PixelCropRect,
+    renderedSource: string,
+  ) {
     if (starterDeckOperationInProgress.current) return
-    const currentCard = cardsRef.current.find((card) => card.id === selectedId)
+    const currentCard = cardsRef.current.find((card) => card.id === cardId)
     if (!currentCard) return
     const sourceKey = side === 'front' ? 'frontSrc' : 'backSrc'
     const cropKey = side === 'front' ? 'frontCrop' : 'backCrop'
     const processedKey = side === 'front' ? 'frontProcessedSrc' : 'backProcessedSrc'
-    if (!currentCard[sourceKey] || !currentCard[cropKey]) return
+    const currentCrop = currentCard[cropKey]
+    if (
+      currentCard[sourceKey] !== renderedSource ||
+      !sameCropRect(currentCrop, renderedCrop)
+    ) {
+      return
+    }
 
     const nextProcessedUrl = URL.createObjectURL(blob)
     const nextCard = { ...currentCard, [processedKey]: nextProcessedUrl }
     const nextCards = cardsRef.current.map((card) =>
       card.id === currentCard.id ? nextCard : card,
     )
-    replaceCards(nextCards)
+    replaceCards(nextCards, { history: 'replacePresent' })
     releaseUnusedUrls(
       currentCard[processedKey] ? [currentCard[processedKey]] : [],
       nextCards,
@@ -371,6 +573,11 @@ export function useCards({
     setErrors,
     replaceCards,
     releaseUnusedUrls,
+    commitSettings,
+    undo: () => restoreHistory('undo'),
+    redo: () => restoreHistory('redo'),
+    canUndo: historyCanUndo(history),
+    canRedo: historyCanRedo(history),
     beginCardOperation,
     isCurrentCardOperation,
     updateCard,

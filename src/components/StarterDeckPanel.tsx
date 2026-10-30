@@ -150,7 +150,10 @@ export default function StarterDeckPanel({
     )
   }
 
-  function handleProcessedImage(side: CardSide, blob: Blob) {
+  function handleProcessedImage(
+    ...args: [string, CardSide, Blob, PixelCropRect, string]
+  ) {
+    const [, side, blob] = args
     if (side !== 'back') return
     if (draftProcessedUrl.current) URL.revokeObjectURL(draftProcessedUrl.current)
     const processedSource = URL.createObjectURL(blob)
