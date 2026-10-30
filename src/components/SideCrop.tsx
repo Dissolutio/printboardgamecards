@@ -8,6 +8,7 @@ import { effectiveDpiForSource } from '../lib/vectorSource.ts'
 import { backgroundFor } from '../lib/piece.ts'
 import { centeredMaximumCrop } from '../lib/cropConvert.ts'
 import { renderCrop } from '../lib/renderCrop.ts'
+import { shouldCommitCropEvent } from '../lib/cropEvents.ts'
 import type { BleedMode, Card, CardBackground, CardSide, PixelCropRect } from '../types.ts'
 import {
   clampZoom,
@@ -76,6 +77,7 @@ export function SideCrop({
   const renderId = useRef(0)
   const latestCrop = useRef<PixelCropRect | undefined>(undefined)
   const sliderChanging = useRef(false)
+  const userActionInProgress = useRef(false)
   const zoomCommitFrame = useRef<number | undefined>(undefined)
   const seededMissingCrop = useRef(false)
   const [workspaceSize, setWorkspaceSize] = useState({ width: 0, height: 0 })
@@ -170,7 +172,14 @@ export function SideCrop({
   function handleCropComplete(_area: Area, areaPixels: Area) {
     const nextCrop = asCrop(areaPixels)
     latestCrop.current = nextCrop
-    if (!sliderChanging.current) commitCrop(nextCrop)
+    if (
+      shouldCommitCropEvent(
+        userActionInProgress.current,
+        sliderChanging.current,
+      )
+    ) {
+      commitCrop(nextCrop)
+    }
   }
 
   function finishZoomInteraction() {
@@ -180,11 +189,13 @@ export function SideCrop({
     zoomCommitFrame.current = window.requestAnimationFrame(() => {
       sliderChanging.current = false
       if (latestCrop.current) commitCrop(latestCrop.current)
+      userActionInProgress.current = false
     })
   }
 
   function handleZoomChange(value: number) {
     const nextZoom = clampZoom(value)
+    userActionInProgress.current = true
     sliderChanging.current = true
     setZoom(nextZoom)
     setZoomInput(nextZoom.toFixed(2))
@@ -209,6 +220,7 @@ export function SideCrop({
         x: position.x + (event.key === 'ArrowLeft' ? -step : event.key === 'ArrowRight' ? step : 0),
         y: position.y + (event.key === 'ArrowUp' ? -step : event.key === 'ArrowDown' ? step : 0),
       }))
+      userActionInProgress.current = true
       sliderChanging.current = true
       return
     }
@@ -400,6 +412,12 @@ export function SideCrop({
                   }}
                   onCropComplete={handleCropComplete}
                   onMediaLoaded={handleMediaLoaded}
+                  onInteractionStart={() => {
+                    userActionInProgress.current = true
+                  }}
+                  onInteractionEnd={() => {
+                    userActionInProgress.current = false
+                  }}
                 />
               )}
               {frameSize && bleedMode === 'COLOR' && (
