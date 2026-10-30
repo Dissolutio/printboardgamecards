@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ChangeEvent } from 'react'
 import { pdf } from '@react-pdf/renderer'
 import CardEditor from './components/CardEditor.tsx'
 import CardFace from './components/CardFace.tsx'
+import StarterDeckPanel, { type StarterBackChoice } from './components/StarterDeckPanel.tsx'
 import CalibrationDoc from './pdf/CalibrationDoc.tsx'
 import DuplexDoc from './pdf/DuplexDoc.tsx'
 import PrintAndGlueDoc from './pdf/PrintAndGlueDoc.tsx'
@@ -57,6 +58,14 @@ import { loadImageSize, renderCrop } from './lib/renderCrop.ts'
 import { parseProject, serializeProject } from './lib/project.ts'
 import { findDisallowedSources } from './lib/sourcePolicy.ts'
 import { isSvgFile, isSvgUrl } from './lib/vectorSource.ts'
+import { BACK_DESIGNS, BACK_PALETTES, backSvgToDataUrl, generateBackSvg } from './lib/backDesigns.ts'
+import { parseDeckManifest, type DeckManifest } from './lib/deckManifest.ts'
+import { buildStarterCards } from './lib/starterDeck.ts'
+import {
+  backSvgSize,
+  mapWithConcurrency,
+  needsStarterDeckReplacementConfirmation,
+} from './lib/starterDeckBuild.ts'
 import {
   convertProjectDataSourcesToBlobUrls,
   needsProjectReplacementConfirmation,
@@ -101,15 +110,17 @@ function estimatedScaleMessage(value: number): string {
 type QuantityStepperProps = {
   quantity: number
   cardLabel: string
+  disabled?: boolean
   onStep: (direction: QuantityDirection) => void
 }
 
-function QuantityStepper({ quantity, cardLabel, onStep }: QuantityStepperProps) {
+function QuantityStepper({ quantity, cardLabel, disabled = false, onStep }: QuantityStepperProps) {
   return (
     <div className="join join-sm" role="group" aria-label={`${cardLabel} copy count`}>
       <button
         className="btn btn-xs join-item"
         type="button"
+        disabled={disabled}
         aria-label={`Decrease ${cardLabel} copies`}
         title={`Decrease ${cardLabel} copies`}
         onClick={() => onStep(-1)}
@@ -125,6 +136,7 @@ function QuantityStepper({ quantity, cardLabel, onStep }: QuantityStepperProps) 
       <button
         className="btn btn-xs join-item"
         type="button"
+        disabled={disabled}
         aria-label={`Increase ${cardLabel} copies`}
         title={`Increase ${cardLabel} copies`}
         onClick={() => onStep(1)}
@@ -231,6 +243,28 @@ async function blobUrlToDataUrl(url: string): Promise<string> {
   })
 }
 
+async function fileToDataUrl(file: File): Promise<string> {
+  const type = getImageType(file)
+  const sourceFile =
+    (!file.type || file.type.toLowerCase() === 'application/octet-stream') && type
+      ? new Blob([file], { type })
+      : file
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        resolve(reader.result)
+      } else {
+        reject(new Error('Could not read the image. Choose a different image and try again.'))
+      }
+    }
+    reader.onerror = () => {
+      reject(new Error('Could not read the image. Choose a different image and try again.'))
+    }
+    reader.readAsDataURL(sourceFile)
+  })
+}
+
 async function dataUrlToBlobUrl(url: string): Promise<string> {
   const response = await fetch(url)
   if (!response.ok) throw new Error('Could not read an image from the project file.')
@@ -259,6 +293,9 @@ function App() {
   const presetGeneration = useRef(0)
   const presetInProgress = useRef(false)
   const projectOperationInProgress = useRef(false)
+  const starterDeckGeneration = useRef(0)
+  const starterDeckOperationInProgress = useRef(false)
+  const starterDeckManifest = useRef<DeckManifest | undefined>(undefined)
   const appliedPreset = useRef<PresetName>('POKER')
   const projectFileInput = useRef<HTMLInputElement>(null)
   const [selectedId, setSelectedId] = useState('card-1')
@@ -266,6 +303,11 @@ function App() {
   const [isChangingPreset, setIsChangingPreset] = useState(false)
   const [isSavingProject, setIsSavingProject] = useState(false)
   const [isLoadingProject, setIsLoadingProject] = useState(false)
+  const [isCreatingStarterDeck, setIsCreatingStarterDeck] = useState(false)
+  const [isLoadingStarterManifest, setIsLoadingStarterManifest] = useState(false)
+  const [starterDeckProgress, setStarterDeckProgress] =
+    useState<{ done: number; total: number }>()
+  const [starterDeckError, setStarterDeckError] = useState<string>()
   const [paperName, setPaperName] = useState<PaperName>('LETTER')
   const [exportMode, setExportMode] = useState<ExportMode>('PRINT_GLUE')
   const [pieceOrientation, setPieceOrientation] = useState<PieceOrientation>('AUTO')
@@ -312,7 +354,7 @@ function App() {
       : undefined
   const selectedCard = cards.find((card) => card.id === selectedId)
   const isProjectControlsDisabled =
-    isChangingPreset || isSavingProject || isLoadingProject || isExporting
+    isChangingPreset || isSavingProject || isLoadingProject || isExporting || isCreatingStarterDeck
   const pageCount =
     exportMode === 'PRINT_GLUE'
       ? layoutPrintAndGlue(cards, tightGrid).length
@@ -1006,6 +1048,173 @@ function App() {
     }
   }
 
+  async function handleCreateStarterDeck({
+    includeJokers,
+    back,
+  }: {
+    includeJokers: boolean
+    back: StarterBackChoice
+  }) {
+    if (
+      starterDeckOperationInProgress.current ||
+      presetInProgress.current ||
+      projectOperationInProgress.current ||
+      isExporting
+    ) {
+      return
+    }
+
+    if (
+      needsStarterDeckReplacementConfirmation(cardsRef.current) &&
+      !window.confirm('Replace the current deck with a new standard deck? This cannot be undone.')
+    ) {
+      return
+    }
+
+    const generation = ++starterDeckGeneration.current
+    const originalCards = cardsRef.current
+    const generatedUrls: string[] = []
+    starterDeckOperationInProgress.current = true
+    presetInProgress.current = true
+    setIsCreatingStarterDeck(true)
+    setIsChangingPreset(true)
+    setStarterDeckError(undefined)
+    setStarterDeckProgress(undefined)
+    setExportError(undefined)
+    for (const card of originalCards) beginCardOperation(card.id)
+
+    try {
+      let manifest = starterDeckManifest.current
+      if (!manifest) {
+        setIsLoadingStarterManifest(true)
+        let response: Response
+        try {
+          response = await fetch(`${import.meta.env.BASE_URL}decks/classic/manifest.json`)
+        } catch {
+          throw new Error('Could not load the standard deck. Check your connection and try again.')
+        }
+        if (!response.ok) {
+          throw new Error('Could not load the standard deck. Check your connection and try again.')
+        }
+        let manifestValue: unknown
+        try {
+          manifestValue = await response.json()
+        } catch {
+          throw new Error('The standard deck data is invalid. Reload the page and try again.')
+        }
+        const parsedManifest = parseDeckManifest(manifestValue)
+        if (!parsedManifest.ok) {
+          throw new Error('The standard deck data is invalid. Reload the page and try again.')
+        }
+        manifest = parsedManifest.manifest
+        starterDeckManifest.current = manifest
+      }
+
+      let backSrc: string
+      if (back.type === 'image') {
+        backSrc = await fileToDataUrl(back.file)
+      } else {
+        const design = BACK_DESIGNS.find((option) => option.id === back.design)
+        const palette = BACK_PALETTES.find((option) => option.id === back.paletteId)
+        if (!design || !palette) {
+          throw new Error('Choose a valid back design and palette.')
+        }
+        const size = backSvgSize(cardSize)
+        backSrc = backSvgToDataUrl(
+          generateBackSvg({
+            design: back.design,
+            width: size.width,
+            height: size.height,
+            primary: palette.primary,
+            secondary: palette.secondary,
+            border: back.border,
+          }),
+        )
+      }
+
+      const newCards = buildStarterCards({
+        manifest,
+        baseUrl: `${import.meta.env.BASE_URL}decks/classic`,
+        includeJokers,
+        makeId: () => crypto.randomUUID(),
+        backSrc,
+      }).map((card) => ({
+        ...card,
+        frontIsVector: isSvgUrl(card.frontSrc ?? ''),
+        backIsVector: isSvgUrl(backSrc),
+      }))
+      if (newCards.length !== (includeJokers ? 54 : 52)) {
+        throw new Error('The standard deck data is invalid. Reload the page and try again.')
+      }
+      const processedCards = await mapWithConcurrency(
+        newCards,
+        4,
+        async (card) => {
+          let processedCard = card
+          for (const side of SIDES) {
+            const result = await prepareSideCrop(
+              processedCard,
+              side,
+              cardSize,
+              'COLOR',
+              false,
+            )
+            if (!result) throw new Error('Could not process a card image.')
+            const processedSource = URL.createObjectURL(result.blob)
+            generatedUrls.push(processedSource)
+            processedCard = withSideCrop(
+              processedCard,
+              side,
+              result.crop,
+              processedSource,
+            )
+          }
+          return processedCard
+        },
+        (done, total) => setStarterDeckProgress({ done, total }),
+      )
+
+      if (
+        generation !== starterDeckGeneration.current ||
+        cardsRef.current !== originalCards
+      ) {
+        generatedUrls.forEach(URL.revokeObjectURL)
+        if (cardsRef.current !== originalCards) {
+          setStarterDeckError(
+            'The deck changed while creating the standard deck. Please try again.',
+          )
+        }
+        return
+      }
+
+      for (const card of originalCards) beginCardOperation(card.id)
+      replaceCards(processedCards)
+      setSelectedId(processedCards[0].id)
+      setErrors({ front: undefined, back: undefined })
+      revokeUnusedUrls(originalCards.flatMap(objectUrls), processedCards)
+      setExportError(undefined)
+    } catch (error) {
+      generatedUrls.forEach(URL.revokeObjectURL)
+      const message = error instanceof Error ? error.message : ''
+      setStarterDeckError(
+        message.startsWith('Could not load the standard deck.') ||
+          message.startsWith('The standard deck data is invalid.') ||
+          message.startsWith('Could not read the image.') ||
+          message.startsWith('Choose a valid back design')
+          ? message
+          : 'Could not create the standard deck. Check the image files and try again.',
+      )
+    } finally {
+      if (generation === starterDeckGeneration.current) {
+        starterDeckOperationInProgress.current = false
+        presetInProgress.current = false
+        setIsCreatingStarterDeck(false)
+        setIsLoadingStarterManifest(false)
+        setIsChangingPreset(false)
+      }
+    }
+  }
+
   async function getExportCards() {
     return Promise.all(
       cards.map(async (card) => {
@@ -1130,6 +1339,17 @@ function App() {
           </p>
         </header>
 
+        <StarterDeckPanel
+          cardSize={cardSize}
+          disabled={isProjectControlsDisabled}
+          isLoadingManifest={isLoadingStarterManifest}
+          isProcessing={isCreatingStarterDeck}
+          progress={starterDeckProgress}
+          error={starterDeckError}
+          onCreate={handleCreateStarterDeck}
+        />
+
+        <div inert={isProjectControlsDisabled}>
         <section className="mb-6 rounded-box border border-base-300 bg-base-100 p-5">
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             <label className="form-control">
@@ -1155,7 +1375,7 @@ function App() {
               <select
                 className="select select-bordered w-full"
                 value={paperName}
-                disabled={isLoadingProject}
+                disabled={isProjectControlsDisabled}
                 onChange={(event) => {
                   const selectedPaper = PAPER_OPTIONS.find(
                     (option) => option === event.currentTarget.value,
@@ -1175,7 +1395,7 @@ function App() {
               <select
                 className="select select-bordered w-full"
                 value={exportMode}
-                disabled={isLoadingProject}
+                disabled={isProjectControlsDisabled}
                 onChange={(event) =>
                   setExportMode(
                     event.currentTarget.value === 'DUPLEX' ? 'DUPLEX' : 'PRINT_GLUE',
@@ -1511,12 +1731,18 @@ function App() {
               </p>
             )}
           </section>
+          </div>
         )}
 
         <section className="mb-6 rounded-box border border-base-300 bg-base-100 p-5">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-lg font-semibold">Cards</h2>
-            <button className="btn btn-outline btn-primary" type="button" onClick={handleAddCard}>
+            <button
+              className="btn btn-outline btn-primary"
+              type="button"
+              disabled={isProjectControlsDisabled}
+              onClick={handleAddCard}
+            >
               + Add card
             </button>
           </div>
@@ -1530,6 +1756,7 @@ function App() {
                   className="flex w-full items-center gap-3 text-left"
                   type="button"
                   aria-pressed={card.id === selectedId}
+                  disabled={isProjectControlsDisabled}
                   onClick={() => {
                     setSelectedId(card.id)
                     setErrors({ front: undefined, back: undefined })
@@ -1556,6 +1783,7 @@ function App() {
                   <QuantityStepper
                     quantity={card.quantity}
                     cardLabel={`Card ${index + 1}`}
+                    disabled={isProjectControlsDisabled}
                     onStep={(direction) => handleQuantityStep(card.id, direction)}
                   />
                 </div>
@@ -1577,6 +1805,7 @@ function App() {
                   <button
                     className="btn btn-sm btn-outline flex-1"
                     type="button"
+                    disabled={isProjectControlsDisabled}
                     onClick={() => handleDuplicateCard(card.id)}
                   >
                     Duplicate
@@ -1584,6 +1813,7 @@ function App() {
                   <button
                     className="btn btn-sm btn-outline btn-error flex-1"
                     type="button"
+                    disabled={isProjectControlsDisabled}
                     onClick={() => handleDeleteCard(card.id)}
                   >
                     Delete
@@ -1721,6 +1951,7 @@ function App() {
                     <QuantityStepper
                       quantity={card.quantity}
                       cardLabel={`Card ${index + 1}`}
+                      disabled={isProjectControlsDisabled}
                       onStep={(direction) => handleQuantityStep(card.id, direction)}
                     />
                   </div>
