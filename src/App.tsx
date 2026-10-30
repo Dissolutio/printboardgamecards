@@ -383,12 +383,14 @@ function App() {
   }
 
   function updateCard(nextCard: Card) {
+    if (starterDeckOperationInProgress.current) return
     const currentCards = cardsRef.current
     const nextCards = currentCards.map((card) => (card.id === nextCard.id ? nextCard : card))
     replaceCards(nextCards)
   }
 
   function handleQuantityStep(cardId: string, direction: QuantityDirection) {
+    if (starterDeckOperationInProgress.current) return
     const currentCard = cardsRef.current.find((card) => card.id === cardId)
     if (!currentCard) return
 
@@ -657,6 +659,7 @@ function App() {
   }
 
   function handleCropChange(side: CardSide, crop: PixelCropRect) {
+    if (starterDeckOperationInProgress.current) return
     const currentCard = cardsRef.current.find((card) => card.id === selectedId)
     if (!currentCard) return
 
@@ -671,6 +674,7 @@ function App() {
   }
 
   function handleProcessedImage(side: CardSide, blob: Blob) {
+    if (starterDeckOperationInProgress.current) return
     const currentCard = cardsRef.current.find((card) => card.id === selectedId)
     if (!currentCard) return
     const sourceKey = side === 'front' ? 'frontSrc' : 'backSrc'
@@ -1150,7 +1154,7 @@ function App() {
         newCards,
         4,
         async (card) => {
-          let processedCard = card
+          let processedCard: Card = card
           for (const side of SIDES) {
             const result = await prepareSideCrop(
               processedCard,
@@ -1731,7 +1735,6 @@ function App() {
               </p>
             )}
           </section>
-          </div>
         )}
 
         <section className="mb-6 rounded-box border border-base-300 bg-base-100 p-5">
@@ -1984,6 +1987,7 @@ function App() {
             </div>
           )}
         </section>
+        </div>
         <footer className="mt-8 text-center text-xs text-base-content/50">
           <a
             target="_blank"

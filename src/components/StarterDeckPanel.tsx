@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Size } from '../lib/geometry.ts'
 import {
   BACK_DESIGNS,
@@ -55,6 +55,7 @@ export default function StarterDeckPanel({
   const [border, setBorder] = useState(true)
   const [imageFile, setImageFile] = useState<File>()
   const [imagePreview, setImagePreview] = useState<string>()
+  const imagePreviewUrl = useRef<string | undefined>(undefined)
   const palette = BACK_PALETTES.find((option) => option.id === paletteId) ?? BACK_PALETTES[0]
   const selectedDesign = BACK_DESIGNS.find((option) => option.id === design) ?? BACK_DESIGNS[0]
   const generatedPreview = useMemo(() => {
@@ -71,16 +72,12 @@ export default function StarterDeckPanel({
     )
   }, [border, cardSize, design, palette])
 
-  useEffect(() => {
-    if (!imageFile) {
-      setImagePreview(undefined)
-      return
-    }
-
-    const previewUrl = URL.createObjectURL(imageFile)
-    setImagePreview(previewUrl)
-    return () => URL.revokeObjectURL(previewUrl)
-  }, [imageFile])
+  useEffect(
+    () => () => {
+      if (imagePreviewUrl.current) URL.revokeObjectURL(imagePreviewUrl.current)
+    },
+    [],
+  )
 
   function handleCreate() {
     if (backType === 'image') {
@@ -203,7 +200,14 @@ export default function StarterDeckPanel({
                 className="file-input file-input-bordered w-full"
                 type="file"
                 accept={IMAGE_ACCEPT}
-                onChange={(event) => setImageFile(event.currentTarget.files?.[0])}
+                onChange={(event) => {
+                  const file = event.currentTarget.files?.[0]
+                  if (imagePreviewUrl.current) URL.revokeObjectURL(imagePreviewUrl.current)
+                  const previewUrl = file ? URL.createObjectURL(file) : undefined
+                  imagePreviewUrl.current = previewUrl
+                  setImageFile(file)
+                  setImagePreview(previewUrl)
+                }}
               />
             </label>
             {imagePreview && (
