@@ -16,6 +16,7 @@ import {
   DEFAULT_BLEED,
   mmToPt,
   PAPER,
+  type Point,
 } from './geometry.ts'
 
 describe('fullWidthScaleTicks', () => {
