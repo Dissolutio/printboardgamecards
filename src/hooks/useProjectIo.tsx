@@ -51,11 +51,13 @@ import {
 import { DEFAULT_BLEED, PAPER } from '../lib/geometry.ts'
 import type { BleedMode, Card, CardSide, PixelCropRect } from '../types.ts'
 import type { ReplaceCardsOptions } from './useCards.ts'
+import type { ConfirmOptions } from '../components/useConfirm.tsx'
 
 type PresetName = keyof typeof CARD_PRESETS
 type PaperName = keyof typeof PAPER
 type ExportMode = 'PRINT_GLUE' | 'DUPLEX'
 type Setter<T> = Dispatch<SetStateAction<T>>
+type ConfirmAction = (options: ConfirmOptions) => Promise<boolean>
 
 const SIDES: CardSide[] = ['front', 'back']
 
@@ -164,6 +166,7 @@ type UseProjectIoOptions = {
   isExporting: boolean
   setIsExporting: Setter<boolean>
   setIsChangingPreset: Setter<boolean>
+  confirm: ConfirmAction
   onProjectOpened: () => void
   onStarterDeckCreated: () => void
   pageCount: number
@@ -200,6 +203,7 @@ export function useProjectIo(options: UseProjectIoOptions) {
     isExporting,
     setIsExporting,
     setIsChangingPreset,
+    confirm,
     onProjectOpened,
     onStarterDeckCreated,
     pageCount,
@@ -322,7 +326,11 @@ export function useProjectIo(options: UseProjectIoOptions) {
           exportMode,
           pieceOrientation,
         }) &&
-        !window.confirm('Replace the current deck?')
+        !(await confirm({
+          title: 'Open project file?',
+          message: 'This replaces the current deck and settings.',
+          confirmLabel: 'Open project file',
+        }))
       ) {
         return
       }
@@ -433,7 +441,11 @@ export function useProjectIo(options: UseProjectIoOptions) {
 
     if (
       needsStarterDeckReplacementConfirmation(cardsRef.current) &&
-      !window.confirm('Replace the current deck with a new standard deck? This cannot be undone.')
+      !(await confirm({
+        title: 'Create a new deck?',
+        message: 'This replaces your current cards. You can undo this.',
+        confirmLabel: 'Create deck',
+      }))
     ) {
       return false
     }
