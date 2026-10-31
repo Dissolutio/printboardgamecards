@@ -6,9 +6,12 @@ import {
   type CalibrationMm,
 } from '../lib/calibration.ts'
 import { parseMeasurement } from '../lib/calibrationInput.ts'
+import { parseLocaleNumber } from '../i18n/numbers.ts'
 import {
   calibrationScaleY,
+  calibrationScaleGaugeY,
   estimatePrintScale,
+  estimatePrintScaleFromRuler,
   SHEET_WIDTH_MM,
 } from '../lib/calibrationScale.ts'
 import {
@@ -28,6 +31,7 @@ type PaperName = keyof typeof PAPER
 type Grid = ReturnType<typeof calculateGrid>
 
 const ZERO_CALIBRATION_MM: CalibrationMm = { offsetXmm: 0, offsetYmm: 0 }
+const measurementLocale = new Intl.NumberFormat().resolvedOptions().locale
 
 export function usePrinterProfiles({
   paper,
@@ -52,12 +56,20 @@ export function usePrinterProfiles({
   const [observedXmm, setObservedXmm] = useState('')
   const [observedYmm, setObservedYmm] = useState('')
   const [scaleGapInput, setScaleGapInput] = useState('')
+  const [rulerDistanceInput, setRulerDistanceInput] = useState('')
   const [calibrationUpdated, setCalibrationUpdated] = useState(false)
   const [calibrationStorageWarning, setCalibrationStorageWarning] = useState<string>()
 
   const calibrationPt = exportCalibrationPt('CALIBRATED', activeProfile)
   const hasCalibrationScale =
     calibrationScaleY({ paper, grid, cardSize, backOffsetY: calibrationPt.offsetY }) !== null
+  const hasFoldGauge =
+    calibrationScaleGaugeY({
+      paper,
+      grid,
+      cardSize,
+      backOffsetY: calibrationPt.offsetY,
+    }) !== null
   const scaleGapValue = parseMeasurement(scaleGapInput)
   const validScaleGap = scaleGapValue !== undefined && scaleGapValue >= 0
   const scaleEstimate =
@@ -66,6 +78,13 @@ export function usePrinterProfiles({
           sheetWidthMm: SHEET_WIDTH_MM[paperName],
           gapSpaces: scaleGapValue,
         })
+      : undefined
+  const rulerDistanceValue = parseLocaleNumber(rulerDistanceInput, measurementLocale)
+  const validRulerDistance =
+    rulerDistanceValue !== undefined && rulerDistanceValue > 0
+  const rulerEstimate =
+    validRulerDistance && rulerDistanceValue !== undefined
+      ? estimatePrintScaleFromRuler(rulerDistanceValue)
       : undefined
 
   function persistPrinterProfiles(nextProfiles: PrinterProfiles) {
@@ -193,13 +212,18 @@ export function usePrinterProfiles({
     setObservedYmm,
     scaleGapInput,
     setScaleGapInput,
+    rulerDistanceInput,
+    setRulerDistanceInput,
     calibrationUpdated,
     setCalibrationUpdated,
     calibrationStorageWarning,
     calibrationPt,
     hasCalibrationScale,
+    hasFoldGauge,
     validScaleGap,
     scaleEstimate,
+    validRulerDistance,
+    rulerEstimate,
     commitCalibrationAxis,
     resetCalibration,
     applyObservedCorrection,

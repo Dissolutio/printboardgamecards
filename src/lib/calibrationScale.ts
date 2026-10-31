@@ -1,4 +1,11 @@
-import { DEFAULT_BLEED, mmToPt, type Point, type Size } from './geometry.ts'
+import {
+  applyCalibration,
+  DEFAULT_BLEED,
+  mmToPt,
+  type Point,
+  type Size,
+} from './geometry.ts'
+import type { Calibration, Grid } from './layout.ts'
 
 export const SHEET_WIDTH_MM = {
   LETTER: 215.9,
@@ -25,6 +32,43 @@ export type CornerLabelBox = {
   top: number
   width: number
   height: number
+}
+
+export type TrimRect = {
+  left: number
+  top: number
+  width: number
+  height: number
+}
+
+export function trimRects(
+  grid: Grid,
+  cardSize: Size,
+  calibration: Calibration,
+  side: 'front' | 'back',
+): TrimRect[] {
+  const rects: TrimRect[] = []
+
+  for (let row = 0; row < grid.rows; row += 1) {
+    for (let col = 0; col < grid.cols; col += 1) {
+      const cellCol = side === 'front' ? col : grid.cols - 1 - col
+      const cellOrigin = applyCalibration(
+        {
+          x: grid.originX + cellCol * grid.cellW,
+          y: grid.originY + row * grid.cellH,
+        },
+        calibration,
+      )[side]
+      rects.push({
+        left: cellOrigin.x + DEFAULT_BLEED,
+        top: cellOrigin.y + DEFAULT_BLEED,
+        width: cardSize.width,
+        height: cardSize.height,
+      })
+    }
+  }
+
+  return rects
 }
 
 function roundThousandth(value: number): number {
@@ -91,6 +135,47 @@ export function fullWidthScaleTicks(paperWidthPt: number): ScaleTick[] {
   })
 }
 
+export function fullWidthScaleTickLength(tick: ScaleTick): number {
+  if (Math.abs(tick.mm) === 100) return 14
+  return tick.kind === 'major' ? 8 : tick.kind === 'mid' ? 5 : 3
+}
+
+export function foldGuideXs(paperWidthPt: number): { left: number; right: number } {
+  const centerX = paperWidthPt / 2
+  const scaleHalfWidth = mmToPt(100)
+  return {
+    left: roundThousandth(centerX - scaleHalfWidth),
+    right: roundThousandth(centerX + scaleHalfWidth),
+  }
+}
+
+export type ScaleGaugeTick = {
+  mm: number
+  xPt: number
+  kind: 'minor' | 'mid' | 'major'
+  label?: string
+}
+
+export function scaleGaugeTicks(
+  paperWidthPt: number,
+  side: 'left' | 'right',
+): ScaleGaugeTick[] {
+  const foldX = foldGuideXs(paperWidthPt)[side]
+
+  return Array.from({ length: 29 }, (_, index) => {
+    const mm = index / 2
+    const kind =
+      mm % 2 === 0 ? 'major' : Number.isInteger(mm) ? 'mid' : 'minor'
+
+    return {
+      mm,
+      xPt: roundThousandth(foldX + (side === 'left' ? 1 : -1) * mmToPt(mm)),
+      kind,
+      ...(kind === 'major' ? { label: String(mm) } : {}),
+    }
+  })
+}
+
 export function cornerScaleTicks(): ScaleTick[] {
   return Array.from({ length: 21 }, (_, index) => {
     const mm = (index - 10) / 2
@@ -124,6 +209,23 @@ export function estimatePrintScale(input: {
   const verdict =
     scale < 0.99 ? 'TOO_SMALL' : scale > 1.01 ? 'TOO_LARGE' : 'OK'
   return { scale, verdict }
+}
+
+export function estimatePrintScaleFromRuler(
+  measuredMm: number,
+): { scale: number; verdict: 'OK' | 'TOO_SMALL' | 'TOO_LARGE' } {
+  if (!Number.isFinite(measuredMm) || measuredMm <= 0) {
+    throw new RangeError('Measured distance must be finite and positive.')
+  }
+
+  const scale = measuredMm / 200
+  const verdict =
+    scale < 0.99 ? 'TOO_SMALL' : scale > 1.01 ? 'TOO_LARGE' : 'OK'
+  return { scale, verdict }
+}
+
+export function scaleEstimatesDisagree(first: number, second: number): boolean {
+  return Math.abs(first - second) > 0.015 + Number.EPSILON
 }
 
 export function scaleBandY({
@@ -189,4 +291,45 @@ export function calibrationScaleY({
       cardSize.height,
     backOffsetY,
   })
+}
+
+export function calibrationScaleGaugeY({
+  paper,
+  grid,
+  cardSize,
+  backOffsetY,
+}: {
+  paper: Size
+  grid: { originY: number; rows: number; cellH: number }
+  cardSize: Size
+  backOffsetY: number
+}): number | null {
+  const scaleY = calibrationScaleY({ paper, grid, cardSize, backOffsetY })
+  if (scaleY === null) return null
+
+  const firstTrimTopPt = grid.originY + DEFAULT_BLEED
+  const lastTrimBottomPt =
+    grid.originY +
+    (grid.rows - 1) * grid.cellH +
+    DEFAULT_BLEED +
+    cardSize.height
+  const gaugeTopOffset = 5
+  const gaugeBottomOffset = 11
+  const trimClearance = 6
+  const edgeClearance = 17
+
+  for (const gaugeY of [scaleY + 20, scaleY - 20]) {
+    const gaugeTop = gaugeY - gaugeTopOffset
+    const gaugeBottom = gaugeY + gaugeBottomOffset
+    const fitsTopBand =
+      gaugeTop >= edgeClearance &&
+      gaugeBottom + trimClearance <= firstTrimTopPt
+    const fitsBottomBand =
+      gaugeTop >= lastTrimBottomPt + trimClearance &&
+      paper.height - gaugeBottom >= edgeClearance
+
+    if (fitsTopBand || fitsBottomBand) return roundThousandth(gaugeY)
+  }
+
+  return null
 }
