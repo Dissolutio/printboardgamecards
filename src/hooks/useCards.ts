@@ -37,9 +37,11 @@ import {
   type HistorySettings,
 } from '../lib/history.ts'
 import type { Card, CardSide, PixelCropRect } from '../types.ts'
+import type { ConfirmOptions } from '../components/useConfirm.tsx'
 
 type PresetName = keyof typeof CARD_PRESETS
 type QuantityDirection = -1 | 1
+type ConfirmAction = (options: ConfirmOptions) => Promise<boolean>
 export type ReplaceCardsOptions = {
   settings?: HistorySettings
   history?: 'commit' | 'replacePresent' | 'none'
@@ -63,6 +65,7 @@ export function useCards({
   projectOperationInProgress,
   starterDeckOperationInProgress,
   isExporting,
+  confirm,
   settings,
   restoreSettings,
   isHistoryBusy,
@@ -73,6 +76,7 @@ export function useCards({
   projectOperationInProgress: MutableRefObject<boolean>
   starterDeckOperationInProgress: MutableRefObject<boolean>
   isExporting: boolean
+  confirm: ConfirmAction
   settings: HistorySettings
   restoreSettings: (settings: HistorySettings) => void
   isHistoryBusy: () => boolean
@@ -451,7 +455,11 @@ export function useCards({
     if (plan.cardsToUpdate.length === 0) return
     if (
       plan.needsConfirmation &&
-      !window.confirm('Replace the back of every other card with this back? This cannot be undone.')
+      !(await confirm({
+        title: 'Use this back for every card?',
+        message: 'This replaces the back on other cards. You can undo this.',
+        confirmLabel: 'Replace every back',
+      }))
     ) {
       return
     }

@@ -36,12 +36,18 @@ export type StarterBackChoice =
 
 type StarterDeckPanelProps = {
   cardSize: Size
+  presetName: string
+  cardWidthMm: string
+  cardHeightMm: string
   paperName: string
   disabled: boolean
   isLoadingManifest: boolean
   isProcessing: boolean
   progress?: { done: number; total: number }
   error?: string
+  includeJokers: boolean
+  onIncludeJokersChange: (include: boolean) => void
+  summaryText: string
   onCreate: (options: {
     includeJokers: boolean
     back: StarterBackChoice
@@ -50,17 +56,22 @@ type StarterDeckPanelProps = {
 
 export default function StarterDeckPanel({
   cardSize,
+  presetName,
+  cardWidthMm,
+  cardHeightMm,
   paperName,
   disabled,
   isLoadingManifest,
   isProcessing,
   progress,
   error,
+  includeJokers,
+  onIncludeJokersChange,
+  summaryText,
   onCreate,
 }: StarterDeckPanelProps) {
-  const [includeJokers, setIncludeJokers] = useState(false)
   const [backType, setBackType] = useState<'design' | 'image'>('design')
-  const [design, setDesign] = useState<BackDesignId>(BACK_DESIGNS[0].id)
+  const [design, setDesign] = useState<BackDesignId>(BACK_DESIGNS[1].id)
   const [paletteId, setPaletteId] = useState<PaletteId>(BACK_PALETTES[0].id)
   const [border, setBorder] = useState(true)
   const [imageFile, setImageFile] = useState<File>()
@@ -74,22 +85,29 @@ export default function StarterDeckPanel({
   const draftProcessedUrl = useRef<string | undefined>(undefined)
   const previousGeometry = useRef({ cardSize, paperName })
   const palette = BACK_PALETTES.find((option) => option.id === paletteId) ?? BACK_PALETTES[0]
-  const selectedDesign = BACK_DESIGNS.find((option) => option.id === design) ?? BACK_DESIGNS[0]
   const cropArea = cropAreaSize(cardSize, DEFAULT_BLEED, 'COLOR')
-  const generatedPreview = useMemo(() => {
-    const size = backSvgSize(cardSize)
-    return backSvgToDataUrl(
-      generateBackSvg({
-        design,
-        width: size.width,
-        height: size.height,
-        primary: palette.primary,
-        secondary: palette.secondary,
-        border,
-      }),
-    )
-  }, [border, cardSize, design, palette])
-
+  const designPreviews = useMemo(
+    () =>
+      BACK_DESIGNS.filter(({ id }) => ['LATTICE', 'STRIPES', 'DOTS'].includes(id)).map(
+        (option) => {
+          const size = backSvgSize(cardSize)
+          return {
+            ...option,
+            src: backSvgToDataUrl(
+              generateBackSvg({
+                design: option.id,
+                width: size.width,
+                height: size.height,
+                primary: palette.primary,
+                secondary: palette.secondary,
+                border,
+              }),
+            ),
+          }
+        },
+      ),
+    [border, cardSize, palette],
+  )
   useEffect(
     () => () => {
       if (draftSourceUrl.current) URL.revokeObjectURL(draftSourceUrl.current)
@@ -207,142 +225,130 @@ export default function StarterDeckPanel({
     (!imageFile || !draftCard?.backCrop || !processedBlob)
 
   return (
-    <section className="mb-6 space-y-4 rounded-box border border-base-300 bg-base-100 p-5">
-      <h2 className="text-lg font-semibold">Standard deck</h2>
-      <label className="label cursor-pointer justify-start gap-2">
-        <input
-          className="checkbox checkbox-sm"
-          type="checkbox"
-          checked={includeJokers}
-          disabled={busy}
-          onChange={(event) => setIncludeJokers(event.currentTarget.checked)}
-        />
-        <span className="label-text">Include 2 Jokers</span>
-      </label>
+    <section className="starter-panel" aria-labelledby="starter-title">
+      <div className="starter-heading">
+        <h2 id="starter-title">Standard 52-card deck</h2>
+        <span>{presetName.charAt(0) + presetName.slice(1).toLowerCase()} size, {cardWidthMm} by {cardHeightMm} mm</span>
+      </div>
 
-      <fieldset disabled={busy} className="space-y-4">
-        <legend className="label-text mb-2">Card back</legend>
-        <div className="flex flex-wrap gap-4">
-          <label className="label cursor-pointer justify-start gap-2">
-            <input
-              className="radio radio-sm"
-              type="radio"
-              name="starter-back-type"
-              value="design"
-              checked={backType === 'design'}
-              onChange={() => {
+      <fieldset className="starter-fieldset" disabled={busy}>
+        <legend>1. Front set</legend>
+        <label className="front-set-tile">
+          <input type="radio" name="starter-front" checked readOnly aria-label="Classic front set" />
+          <span className="front-set-cards" aria-hidden="true">
+            <span>A♠</span><span className="red-suit">K♥</span><span className="red-suit">Q♦</span>
+          </span>
+          <span className="front-set-name">Classic</span>
+          <span className="front-set-note">More sets can be added later</span>
+        </label>
+        <label className="include-jokers">
+          <input
+            type="checkbox"
+            checked={includeJokers}
+            onChange={(event) => onIncludeJokersChange(event.currentTarget.checked)}
+          />
+          <span>Include 2 Jokers</span>
+        </label>
+      </fieldset>
+
+      <fieldset disabled={busy} className="starter-fieldset">
+        <legend>2. Back</legend>
+        <div className="back-design-grid">
+          {designPreviews.map((option) => (
+            <button
+              key={option.id}
+              className={`back-design-tile ${backType === 'design' && design === option.id ? 'is-selected' : ''}`}
+              type="button"
+              aria-pressed={backType === 'design' && design === option.id}
+              onClick={() => {
                 clearDraft()
+                setDesign(option.id)
                 setBackType('design')
               }}
-            />
-            <span className="label-text">Design</span>
-          </label>
-          <label className="label cursor-pointer justify-start gap-2">
-            <input
-              className="radio radio-sm"
-              type="radio"
-              name="starter-back-type"
-              value="image"
-              checked={backType === 'image'}
-              onChange={() => setBackType('image')}
-            />
-            <span className="label-text">My image</span>
-          </label>
+            >
+              <img
+                src={option.src}
+                alt=""
+                style={{ aspectRatio: `${cardSize.width} / ${cardSize.height}` }}
+              />
+              {option.name}
+            </button>
+          ))}
+          <button
+            className={`back-design-tile image-tile ${backType === 'image' ? 'is-selected' : ''}`}
+            type="button"
+            aria-pressed={backType === 'image'}
+            onClick={() => {
+              setBackType('image')
+              imageInputRef.current?.click()
+            }}
+          >
+            <span className="image-tile-icon" aria-hidden="true">+</span>
+            My image
+          </button>
         </div>
 
+        <input
+          ref={imageInputRef}
+          className="hidden"
+          type="file"
+          accept={IMAGE_ACCEPT}
+          onChange={(event) => {
+            const file = event.currentTarget.files?.[0]
+            if (file) replaceDraft(file)
+            event.currentTarget.value = ''
+          }}
+        />
+
         {backType === 'design' ? (
-          <div className="flex flex-wrap items-end gap-4">
-            <label className="form-control min-w-48">
-              <span className="label-text mb-1">Design</span>
-              <select
-                className="select select-bordered"
-                value={design}
-                onChange={(event) => {
-                  const selected = BACK_DESIGNS.find(
-                    (option) => option.id === event.currentTarget.value,
-                  )
-                  if (selected) setDesign(selected.id)
-                }}
-              >
-                {BACK_DESIGNS.map((option) => (
-                  <option key={option.id} value={option.id}>
-                    {option.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="form-control min-w-48">
-              <span className="label-text mb-1">Palette</span>
-              <select
-                className="select select-bordered"
-                value={paletteId}
-                onChange={(event) => {
-                  const selected = BACK_PALETTES.find(
-                    (option) => option.id === event.currentTarget.value,
-                  )
-                  if (selected) setPaletteId(selected.id)
-                }}
-              >
-                {BACK_PALETTES.map((option) => (
-                  <option key={option.id} value={option.id}>
-                    {option.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="label cursor-pointer justify-start gap-2">
+          <div className="back-options">
+            <span className="color-label">Colors</span>
+            <div className="color-swatches" role="group" aria-label="Back colors">
+              {BACK_PALETTES.map((option) => (
+                <button
+                  key={option.id}
+                  className={`color-swatch ${paletteId === option.id ? 'is-selected' : ''}`}
+                  type="button"
+                  aria-label={`Use ${option.name} colors.`}
+                  aria-pressed={paletteId === option.id}
+                  style={{
+                    background: `linear-gradient(135deg, ${option.primary} 50%, ${option.secondary} 50%)`,
+                  }}
+                  onClick={() => setPaletteId(option.id)}
+                />
+              ))}
+            </div>
+            <label className="border-toggle">
               <input
-                className="checkbox checkbox-sm"
                 type="checkbox"
                 checked={border}
                 onChange={(event) => setBorder(event.currentTarget.checked)}
               />
-              <span className="label-text">Border</span>
+              <span>Border</span>
             </label>
-            <figure className="w-16 shrink-0">
-              <img
-                className="h-auto w-full rounded border border-base-300"
-                src={generatedPreview}
-                alt={`Preview of the ${selectedDesign.name} card back with the ${palette.name} palette.`}
-                style={{ aspectRatio: `${cardSize.width} / ${cardSize.height}` }}
-              />
-            </figure>
           </div>
         ) : (
-          <div className="space-y-4">
-            <input
-              ref={imageInputRef}
-              className="hidden"
-              type="file"
-              accept={IMAGE_ACCEPT}
-              onChange={(event) => {
-                const file = event.currentTarget.files?.[0]
-                if (file) replaceDraft(file)
-                event.currentTarget.value = ''
-              }}
-            />
-            <div className="flex flex-wrap gap-2">
-              <button
-                className="btn btn-outline"
-                type="button"
-                onClick={() => imageInputRef.current?.click()}
-              >
-                Choose another image
-              </button>
-              <button
-                className="btn btn-outline btn-error"
-                type="button"
-                disabled={!draftCard}
-                onClick={clearDraft}
-              >
-                Remove image
-              </button>
-            </div>
-            {draftCard?.backSrc && (
+          <div className="starter-image-flow">
+            <p>Choosing My image opens a crop step for the back before the deck is made.</p>
+            {draftCard?.backSrc ? (
               <>
-                <p className="text-sm text-base-content/70">
-                  Choose the part of the image to print on the back of every card.
-                </p>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    className="btn btn-outline min-h-11"
+                    type="button"
+                    onClick={() => imageInputRef.current?.click()}
+                  >
+                    Choose another image
+                  </button>
+                  <button
+                    className="btn btn-outline min-h-11"
+                    type="button"
+                    disabled={!draftCard}
+                    onClick={clearDraft}
+                  >
+                    Remove image
+                  </button>
+                </div>
                 <SideCrop
                   key={`${draftCard.backSrc}:${cardSize.width}:${cardSize.height}:${paperName}:${cropResetRevision}`}
                   card={draftCard}
@@ -386,6 +392,14 @@ export default function StarterDeckPanel({
                   showImageActions={false}
                 />
               </>
+            ) : (
+              <button
+                className="btn btn-outline min-h-11"
+                type="button"
+                onClick={() => imageInputRef.current?.click()}
+              >
+                Choose an image
+              </button>
             )}
           </div>
         )}
@@ -401,9 +415,17 @@ export default function StarterDeckPanel({
           This image is large. The project file will contain a copy for every card.
         </p>
       )}
-      <button className="btn btn-primary" type="button" disabled={busy || missingImage} onClick={handleCreate}>
-        Create standard deck
-      </button>
+      <div className="starter-create-row">
+        <button
+          className="btn btn-primary min-h-[52px] rounded-lg px-7 text-base font-semibold"
+          type="button"
+          disabled={busy || missingImage}
+          onClick={handleCreate}
+        >
+          Create deck
+        </button>
+        <span className="starter-summary">{summaryText}</span>
+      </div>
       {isLoadingManifest && (
         <p className="text-sm" role="status">Loading the standard deck.</p>
       )}
