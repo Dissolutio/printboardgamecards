@@ -9,10 +9,13 @@ import {
 import type { Grid, Calibration } from '../lib/layout.ts'
 import { calibrationMarks, type CalibrationMark } from '../lib/calibration.ts'
 import {
+  calibrationScaleGaugeY,
   cornerLabelBoxes,
   calibrationScaleY,
   cornerScaleTicks,
+  foldGuideXs,
   fullWidthScaleTicks,
+  scaleGaugeTicks,
   type ScaleTick,
 } from '../lib/calibrationScale.ts'
 
@@ -32,7 +35,7 @@ type TrimRect = {
   height: number
 }
 
-function trimRects(
+export function trimRects(
   grid: Grid,
   cardSize: Size,
   calibration: Calibration,
@@ -146,7 +149,14 @@ function FullWidthScale({
       />
       {ticks.map((tick) => {
         const point = position(tick)
-        const length = tick.kind === 'major' ? 8 : tick.kind === 'mid' ? 5 : 3
+        const length =
+          Math.abs(tick.mm) === 100
+            ? 14
+            : tick.kind === 'major'
+              ? 8
+              : tick.kind === 'mid'
+                ? 5
+                : 3
 
         return (
           <View
@@ -171,9 +181,10 @@ function FullWidthScale({
                 style={{
                   position: 'absolute',
                   left: (tick.xPt ?? 0) - 13,
-                  top: y + 5,
+                  top: y + (Math.abs(tick.mm) === 100 ? 8 : 5),
                   width: 26,
-                  fontSize: 6,
+                  height: 6,
+                  fontSize: Math.abs(tick.mm) === 100 ? 5 : 6,
                   textAlign: 'center',
                   color: '#000000',
                 }}
@@ -182,6 +193,135 @@ function FullWidthScale({
               </Text>
             ),
         )}
+    </>
+  )
+}
+
+function FoldGuide({
+  x,
+  y,
+  side,
+}: {
+  x: number
+  y: number
+  side: 'left' | 'right'
+}) {
+  return (
+    <>
+      {Array.from({ length: 5 }, (_, index) => (
+        <View
+          key={`fold-dash-${side}-${index}`}
+          style={{
+            position: 'absolute',
+            left: x - 0.15,
+            top: y - 9 + index * 4,
+            width: 0.3,
+            height: 2.5,
+            backgroundColor: '#000000',
+          }}
+        />
+      ))}
+      <Text
+        style={{
+          position: 'absolute',
+          left: side === 'left' ? x - 21 : x + 1,
+          top: y - 2.5,
+          width: 20,
+          height: 5,
+          fontSize: 5,
+          textAlign: side === 'left' ? 'right' : 'left',
+          color: '#000000',
+        }}
+      >
+        Fold here
+      </Text>
+    </>
+  )
+}
+
+function ScaleGauge({
+  paperWidthPt,
+  y,
+  side,
+}: {
+  paperWidthPt: number
+  y: number
+  side: 'left' | 'right'
+}) {
+  return (
+    <>
+      {scaleGaugeTicks(paperWidthPt, side).map((tick) => {
+        const length = tick.kind === 'major' ? 8 : tick.kind === 'mid' ? 5 : 3
+
+        return (
+          <Fragment key={`gauge-tick-${side}-${tick.mm}`}>
+            <View
+              style={{
+                position: 'absolute',
+                left: tick.xPt - 0.15,
+                top: y - length / 2,
+                width: 0.3,
+                height: length,
+                backgroundColor: '#000000',
+              }}
+            />
+            {tick.label !== undefined && (
+              <Text
+                style={{
+                  position: 'absolute',
+                  left: tick.xPt - 5,
+                  top: y + 5,
+                  width: 10,
+                  height: 6,
+                  fontSize: 5,
+                  textAlign: 'center',
+                  color: '#000000',
+                }}
+              >
+                {tick.label}
+              </Text>
+            )}
+          </Fragment>
+        )
+      })}
+    </>
+  )
+}
+
+function ScaleDimensionNote({ paperWidthPt, y }: { paperWidthPt: number; y: number }) {
+  const centerX = paperWidthPt / 2
+  const noteY = Math.max(17, y - 13)
+
+  return (
+    <>
+      <Text
+        style={{
+          position: 'absolute',
+          left: centerX - 155,
+          top: noteY,
+          width: 150,
+          height: 5,
+          fontSize: 5,
+          textAlign: 'right',
+          color: '#000000',
+        }}
+      >
+        200 mm between the two long end lines
+      </Text>
+      <Text
+        style={{
+          position: 'absolute',
+          left: centerX + 5,
+          top: noteY,
+          width: 60,
+          height: 5,
+          fontSize: 5,
+          textAlign: 'left',
+          color: '#000000',
+        }}
+      >
+        7.87 in
+      </Text>
     </>
   )
 }
@@ -312,6 +452,13 @@ export default function CalibrationDoc({
     cardSize,
     backOffsetY: calibration.offsetY,
   })
+  const gaugeY = calibrationScaleGaugeY({
+    paper,
+    grid,
+    cardSize,
+    backOffsetY: calibration.offsetY,
+  })
+  const foldXs = foldGuideXs(paper.width)
   const pages = [
     {
       side: 'front' as const,
@@ -357,6 +504,17 @@ export default function CalibrationDoc({
                 side={side}
                 calibration={calibration}
               />
+            )}
+            {side === 'front' && scaleY !== null && (
+              <ScaleDimensionNote paperWidthPt={paper.width} y={scaleY} />
+            )}
+            {side === 'front' && gaugeY !== null && (
+              <>
+                <FoldGuide x={foldXs.left} y={scaleY ?? 0} side="left" />
+                <FoldGuide x={foldXs.right} y={scaleY ?? 0} side="right" />
+                <ScaleGauge paperWidthPt={paper.width} y={gaugeY} side="left" />
+                <ScaleGauge paperWidthPt={paper.width} y={gaugeY} side="right" />
+              </>
             )}
             {side === 'back' &&
               pageMarks.map((mark, index) => (

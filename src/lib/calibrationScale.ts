@@ -91,6 +91,42 @@ export function fullWidthScaleTicks(paperWidthPt: number): ScaleTick[] {
   })
 }
 
+export function foldGuideXs(paperWidthPt: number): { left: number; right: number } {
+  const centerX = paperWidthPt / 2
+  const scaleHalfWidth = mmToPt(100)
+  return {
+    left: roundThousandth(centerX - scaleHalfWidth),
+    right: roundThousandth(centerX + scaleHalfWidth),
+  }
+}
+
+export type ScaleGaugeTick = {
+  mm: number
+  xPt: number
+  kind: 'minor' | 'mid' | 'major'
+  label?: string
+}
+
+export function scaleGaugeTicks(
+  paperWidthPt: number,
+  side: 'left' | 'right',
+): ScaleGaugeTick[] {
+  const foldX = foldGuideXs(paperWidthPt)[side]
+
+  return Array.from({ length: 29 }, (_, index) => {
+    const mm = index / 2
+    const kind =
+      mm % 2 === 0 ? 'major' : Number.isInteger(mm) ? 'mid' : 'minor'
+
+    return {
+      mm,
+      xPt: roundThousandth(foldX + (side === 'left' ? 1 : -1) * mmToPt(mm)),
+      kind,
+      ...(kind === 'major' ? { label: String(mm) } : {}),
+    }
+  })
+}
+
 export function cornerScaleTicks(): ScaleTick[] {
   return Array.from({ length: 21 }, (_, index) => {
     const mm = (index - 10) / 2
@@ -124,6 +160,23 @@ export function estimatePrintScale(input: {
   const verdict =
     scale < 0.99 ? 'TOO_SMALL' : scale > 1.01 ? 'TOO_LARGE' : 'OK'
   return { scale, verdict }
+}
+
+export function estimatePrintScaleFromRuler(
+  measuredMm: number,
+): { scale: number; verdict: 'OK' | 'TOO_SMALL' | 'TOO_LARGE' } {
+  if (!Number.isFinite(measuredMm) || measuredMm <= 0) {
+    throw new RangeError('Measured distance must be finite and positive.')
+  }
+
+  const scale = measuredMm / 200
+  const verdict =
+    scale < 0.99 ? 'TOO_SMALL' : scale > 1.01 ? 'TOO_LARGE' : 'OK'
+  return { scale, verdict }
+}
+
+export function scaleEstimatesDisagree(first: number, second: number): boolean {
+  return Math.abs(first - second) > 0.015 + Number.EPSILON
 }
 
 export function scaleBandY({
@@ -189,4 +242,45 @@ export function calibrationScaleY({
       cardSize.height,
     backOffsetY,
   })
+}
+
+export function calibrationScaleGaugeY({
+  paper,
+  grid,
+  cardSize,
+  backOffsetY,
+}: {
+  paper: Size
+  grid: { originY: number; rows: number; cellH: number }
+  cardSize: Size
+  backOffsetY: number
+}): number | null {
+  const scaleY = calibrationScaleY({ paper, grid, cardSize, backOffsetY })
+  if (scaleY === null) return null
+
+  const firstTrimTopPt = grid.originY + DEFAULT_BLEED
+  const lastTrimBottomPt =
+    grid.originY +
+    (grid.rows - 1) * grid.cellH +
+    DEFAULT_BLEED +
+    cardSize.height
+  const gaugeTopOffset = 5
+  const gaugeBottomOffset = 11
+  const trimClearance = 6
+  const edgeClearance = 17
+
+  for (const gaugeY of [scaleY + 20, scaleY - 20]) {
+    const gaugeTop = gaugeY - gaugeTopOffset
+    const gaugeBottom = gaugeY + gaugeBottomOffset
+    const fitsTopBand =
+      gaugeTop >= edgeClearance &&
+      gaugeBottom + trimClearance <= firstTrimTopPt
+    const fitsBottomBand =
+      gaugeTop >= lastTrimBottomPt + trimClearance &&
+      paper.height - gaugeBottom >= edgeClearance
+
+    if (fitsTopBand || fitsBottomBand) return roundThousandth(gaugeY)
+  }
+
+  return null
 }
