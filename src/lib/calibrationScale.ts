@@ -91,6 +91,11 @@ export function fullWidthScaleTicks(paperWidthPt: number): ScaleTick[] {
   })
 }
 
+export function fullWidthScaleTickLength(tick: ScaleTick): number {
+  if (Math.abs(tick.mm) === 100) return 14
+  return tick.kind === 'major' ? 8 : tick.kind === 'mid' ? 5 : 3
+}
+
 export function foldGuideXs(paperWidthPt: number): { left: number; right: number } {
   const centerX = paperWidthPt / 2
   const scaleHalfWidth = mmToPt(100)

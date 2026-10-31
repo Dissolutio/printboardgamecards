@@ -15,6 +15,7 @@ import {
   cornerScaleTicks,
   foldGuideXs,
   fullWidthScaleTicks,
+  fullWidthScaleTickLength,
   scaleGaugeTicks,
   type ScaleTick,
 } from '../lib/calibrationScale.ts'
@@ -149,14 +150,7 @@ function FullWidthScale({
       />
       {ticks.map((tick) => {
         const point = position(tick)
-        const length =
-          Math.abs(tick.mm) === 100
-            ? 14
-            : tick.kind === 'major'
-              ? 8
-              : tick.kind === 'mid'
-                ? 5
-                : 3
+        const length = fullWidthScaleTickLength(tick)
 
         return (
           <View
@@ -224,12 +218,12 @@ function FoldGuide({
       <Text
         style={{
           position: 'absolute',
-          left: side === 'left' ? x - 21 : x + 1,
-          top: y - 2.5,
-          width: 20,
+          left: x - 14,
+          top: y - 13,
+          width: 28,
           height: 5,
           fontSize: 5,
-          textAlign: side === 'left' ? 'right' : 'left',
+          textAlign: 'center',
           color: '#000000',
         }}
       >
@@ -508,10 +502,10 @@ export default function CalibrationDoc({
             {side === 'front' && scaleY !== null && (
               <ScaleDimensionNote paperWidthPt={paper.width} y={scaleY} />
             )}
-            {side === 'front' && gaugeY !== null && (
+            {side === 'front' && scaleY !== null && gaugeY !== null && (
               <>
-                <FoldGuide x={foldXs.left} y={scaleY ?? 0} side="left" />
-                <FoldGuide x={foldXs.right} y={scaleY ?? 0} side="right" />
+                <FoldGuide x={foldXs.left} y={scaleY} side="left" />
+                <FoldGuide x={foldXs.right} y={scaleY} side="right" />
                 <ScaleGauge paperWidthPt={paper.width} y={gaugeY} side="left" />
                 <ScaleGauge paperWidthPt={paper.width} y={gaugeY} side="right" />
               </>

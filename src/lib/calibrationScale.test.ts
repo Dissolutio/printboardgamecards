@@ -9,6 +9,7 @@ import {
   expectedScaleGapSpaces,
   foldGuideXs,
   fullWidthScaleTicks,
+  fullWidthScaleTickLength,
   scaleEstimatesDisagree,
   scaleGaugeTicks,
   scaleBandY,
@@ -46,6 +47,12 @@ describe('fullWidthScaleTicks', () => {
     expect(ticks[96]).toMatchObject({ mm: -4, kind: 'minor' })
     expect(ticks[96].label).toBeUndefined()
     expect(ticks.every(({ xPt }) => Number(xPt?.toFixed(3)) === xPt)).toBe(true)
+  })
+
+  it('extends both long end ticks to the full 14 pt height', () => {
+    expect(fullWidthScaleTickLength(ticks[0]!)).toBe(14)
+    expect(fullWidthScaleTickLength(ticks.at(-1)!)).toBe(14)
+    expect(fullWidthScaleTickLength(ticks[100]!)).toBe(8)
   })
 })
 
