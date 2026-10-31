@@ -64,7 +64,7 @@ describe('card operations', () => {
 
   it('formats scale messages with the current locale', () => {
     expect(expectedScaleTotalMessage(12)).toBe(
-      `The expected total is ${new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 }).format(12)}.`,
+      `The expected total is ${new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 }).format(12)} tick spaces.`,
     )
     expect(estimatedScaleMessage(1)).toBe(
       `Estimated printer scale is ${new Intl.NumberFormat(undefined, {

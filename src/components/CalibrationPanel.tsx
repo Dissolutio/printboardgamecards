@@ -186,20 +186,25 @@ export default function CalibrationPanel({
         <ol start={3} className="list-decimal space-y-4 pl-5">
           <li className="space-y-1">
             <h3 className="font-medium">Check the printer scaling</h3>
-            <p>Look at the long scale at the top or bottom of the front page.</p>
             <p>
-              Count the empty spaces between the last tick and the paper edge on the left. Do
-              the same on the right.
+              Look at the long scale at the top or bottom of the front page. It has a tick
+              mark for every millimeter. The scale stops a little short of each paper edge.
             </p>
-            <p>Enter the total of both counts.</p>
+            <p>
+              Count the tick spaces between the last tick and the paper edge on the left. A
+              tick space is the gap between two neighboring ticks. Count the whole spaces,
+              then estimate any part of a space as a decimal, such as 7.9. Do the same on the
+              right.
+            </p>
+            <p>Add both counts and enter the total, in tick spaces.</p>
             <label className="form-control max-w-sm gap-1">
-              <span className="label-text">Total of both counts</span>
+              <span className="label-text">Total of both counts (tick spaces)</span>
               <input
                 className="input input-bordered w-full"
                 type="number"
                 min={0}
                 step="any"
-                aria-label="Total of both counts"
+                aria-label="Total of both counts, in tick spaces"
                 aria-describedby="scale-gap-hint"
                 aria-invalid={scaleGapInput.trim() !== '' && !validScaleGap}
                 value={scaleGapInput}

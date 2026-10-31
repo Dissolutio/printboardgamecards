@@ -10,7 +10,7 @@ const scalePercentFormat = new Intl.NumberFormat(undefined, {
 })
 
 export function expectedScaleTotalMessage(value: number): string {
-  return `The expected total is ${scaleGapFormat.format(value)}.`
+  return `The expected total is ${scaleGapFormat.format(value)} tick spaces.`
 }
 
 export function estimatedScaleMessage(value: number): string {

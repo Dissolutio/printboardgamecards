@@ -19,12 +19,13 @@ export const en: Catalog = {
   'calibration.instructions.average':
     'Read two opposite corners. If the readings differ by more than {limit} {unit}, enter the average offset.',
   'calibration.scale.heading': 'Check the printer scaling',
-  'calibration.scale.location': 'Look at the long scale at the top or bottom of the front page.',
+  'calibration.scale.location':
+    'Look at the long scale at the top or bottom of the front page. It has a tick mark for every millimeter. The scale stops a little short of each paper edge.',
   'calibration.scale.count':
-    'Count the empty spaces between the last tick and the paper edge on the left. Do the same on the right.',
-  'calibration.scale.total.instruction': 'Enter the total of both counts.',
-  'calibration.scale.total.label': 'Total of both counts',
-  'calibration.scale.total.expected': 'The expected total is {value}.',
+    'Count the tick spaces between the last tick and the paper edge on the left. A tick space is the gap between two neighboring ticks. Count the whole spaces, then estimate any part of a space as a decimal, such as 7.9. Do the same on the right.',
+  'calibration.scale.total.instruction': 'Add both counts and enter the total, in tick spaces.',
+  'calibration.scale.total.label': 'Total of both counts (tick spaces)',
+  'calibration.scale.total.expected': 'The expected total is {value} tick spaces.',
   'calibration.number.error': 'Enter a number.',
   'calibration.scale.verdict.ok': 'The printer scale is close to 100 percent.',
   'calibration.scale.verdict.small':
