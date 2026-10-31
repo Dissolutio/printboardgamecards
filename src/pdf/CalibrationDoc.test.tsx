@@ -6,6 +6,7 @@ import {
   calibrationScaleY,
   cornerLabelBoxes,
   foldGuideXs,
+  trimRects,
 } from '../lib/calibrationScale.ts'
 import {
   calculateGrid,
@@ -14,7 +15,7 @@ import {
   PAPER,
 } from '../lib/geometry.ts'
 import { calibrationMarks } from '../lib/calibration.ts'
-import CalibrationDoc, { trimRects } from './CalibrationDoc.tsx'
+import CalibrationDoc from './CalibrationDoc.tsx'
 
 const paperCases = [
   { paper: PAPER.LETTER, expectedBox: [0, 0, 612, 792] },
@@ -114,6 +115,8 @@ describe('CalibrationDoc', () => {
         }
 
         const foldXs = foldGuideXs(paper.width)
+        const centerX = paper.width / 2
+        const noteY = Math.max(17, scaleY - 13)
         const marks = calibrationMarks(grid, paper, calibration).front
         const trims = trimRects(grid, cardSize, calibration, 'front')
         const gaugeRects = [
@@ -124,10 +127,10 @@ describe('CalibrationDoc', () => {
             height: 18,
           },
           {
-            left: foldXs.left - 14,
-            top: scaleY - 13,
-            width: 28,
-            height: 5,
+            left: 1,
+            top: scaleY - 6,
+            width: foldXs.left - 2,
+            height: 12,
           },
           {
             left: foldXs.right - 0.15,
@@ -136,10 +139,10 @@ describe('CalibrationDoc', () => {
             height: 18,
           },
           {
-            left: foldXs.right - 14,
-            top: scaleY - 13,
-            width: 28,
-            height: 5,
+            left: foldXs.right + 1,
+            top: scaleY - 6,
+            width: paper.width - foldXs.right - 2,
+            height: 12,
           },
           {
             left: foldXs.left - 0.15,
@@ -152,6 +155,18 @@ describe('CalibrationDoc', () => {
             top: gaugeY - 5,
             width: mmToPt(14) + 5.3,
             height: 16,
+          },
+          {
+            left: centerX - 155,
+            top: noteY,
+            width: 150,
+            height: 5,
+          },
+          {
+            left: centerX + 5,
+            top: noteY,
+            width: 60,
+            height: 5,
           },
         ]
 

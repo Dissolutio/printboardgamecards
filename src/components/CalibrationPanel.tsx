@@ -4,10 +4,13 @@ import { parseMeasurement } from '../lib/calibrationInput.ts'
 import {
   estimatePrintScale,
   expectedScaleGapSpaces,
+  scaleEstimatesDisagree,
   SHEET_WIDTH_MM,
 } from '../lib/calibrationScale.ts'
 import type { PrinterProfile, PrinterProfiles } from '../lib/printerProfiles.ts'
-import { estimatedScaleMessage, expectedScaleTotalMessage } from '../lib/cardOps.ts'
+import { createTranslator } from '../i18n/messages.ts'
+import { en } from '../i18n/en.ts'
+import { formatNumber, formatPercent } from '../i18n/numbers.ts'
 import type { PaperName } from './PrintSettingsPanel.tsx'
 
 type CalibrationDraft = {
@@ -20,10 +23,15 @@ type CalibrationPanelProps = {
   printerProfiles: PrinterProfiles
   activeProfile: PrinterProfile
   hasCalibrationScale: boolean
+  hasFoldGauge: boolean
   scaleGapInput: string
   setScaleGapInput: (value: string) => void
   validScaleGap: boolean
   scaleEstimate: ReturnType<typeof estimatePrintScale> | undefined
+  rulerDistanceInput: string
+  setRulerDistanceInput: (value: string) => void
+  validRulerDistance: boolean
+  rulerEstimate: ReturnType<typeof estimatePrintScale> | undefined
   paperName: PaperName
   observedXmm: string
   setObservedXmm: (value: string) => void
@@ -49,16 +57,23 @@ const calibrationNumberFormat = new Intl.NumberFormat(undefined, {
   minimumFractionDigits: 2,
   maximumFractionDigits: 2,
 })
+const calibrationLocale = new Intl.NumberFormat().resolvedOptions().locale
+const translate = createTranslator(en, 'en')
 
 export default function CalibrationPanel({
   disabled,
   printerProfiles,
   activeProfile,
   hasCalibrationScale,
+  hasFoldGauge,
   scaleGapInput,
   setScaleGapInput,
   validScaleGap,
   scaleEstimate,
+  rulerDistanceInput,
+  setRulerDistanceInput,
+  validRulerDistance,
+  rulerEstimate,
   paperName,
   observedXmm,
   setObservedXmm,
@@ -79,6 +94,24 @@ export default function CalibrationPanel({
   onApplyObservedCorrection,
   onCommitCalibrationAxis,
 }: CalibrationPanelProps) {
+  const scaleEstimates = [
+    {
+      method: translate('calibration.scale.fold.heading'),
+      estimate: hasFoldGauge ? scaleEstimate : undefined,
+    },
+    {
+      method: translate('calibration.scale.ruler.heading'),
+      estimate: rulerEstimate,
+    },
+  ].filter(
+    (
+      result,
+    ): result is {
+      method: string
+      estimate: NonNullable<typeof scaleEstimate>
+    } => result.estimate !== undefined,
+  )
+
   return (
     <section className="mb-6 space-y-4 rounded-box border border-base-300 bg-base-100 p-5">
       <div>
@@ -184,52 +217,130 @@ export default function CalibrationPanel({
       </ol>
       {hasCalibrationScale ? (
         <ol start={3} className="list-decimal space-y-4 pl-5">
-          <li className="space-y-1">
-            <h3 className="font-medium">Check the printer scaling</h3>
-            <p>Look at the long scale at the top or bottom of the front page.</p>
-            <p>
-              Count the empty spaces between the last tick and the paper edge on the left. Do
-              the same on the right.
-            </p>
-            <p>Enter the total of both counts.</p>
-            <label className="form-control max-w-sm gap-1">
-              <span className="label-text">Total of both counts</span>
-              <input
-                className="input input-bordered w-full"
-                type="number"
-                min={0}
-                step="any"
-                aria-label="Total of both counts"
-                aria-describedby="scale-gap-hint"
-                aria-invalid={scaleGapInput.trim() !== '' && !validScaleGap}
-                value={scaleGapInput}
-                onChange={(event) => setScaleGapInput(event.currentTarget.value)}
-              />
-              <span id="scale-gap-hint" className="text-sm">
-                {expectedScaleTotalMessage(
-                  expectedScaleGapSpaces(SHEET_WIDTH_MM[paperName]),
+          <li className="space-y-3">
+            <p>{translate('calibration.scale.intro')}</p>
+            {hasFoldGauge && (
+              <section className="space-y-3 rounded-box border border-base-300 p-4">
+                <h3 className="font-medium">
+                  {translate('calibration.scale.fold.heading')}
+                </h3>
+                <ol className="list-decimal space-y-2 pl-5">
+                  <li>{translate('calibration.scale.fold.step1')}</li>
+                  <li>{translate('calibration.scale.fold.step2')}</li>
+                  <li>{translate('calibration.scale.fold.step3')}</li>
+                  <li>{translate('calibration.scale.fold.step4')}</li>
+                </ol>
+                <label className="form-control max-w-sm gap-1">
+                  <span className="label-text">
+                    {translate('calibration.scale.fold.input.label')}
+                  </span>
+                  <input
+                    className="input input-bordered min-h-11 w-full"
+                    type="number"
+                    min={0}
+                    step="any"
+                    aria-label={translate('calibration.scale.fold.input.label')}
+                    aria-describedby="scale-gap-hint"
+                    aria-invalid={scaleGapInput.trim() !== '' && !validScaleGap}
+                    value={scaleGapInput}
+                    onChange={(event) => setScaleGapInput(event.currentTarget.value)}
+                  />
+                  <span id="scale-gap-hint" className="text-sm">
+                    {translate('calibration.scale.fold.input.expected', {
+                      value: formatNumber(
+                        expectedScaleGapSpaces(SHEET_WIDTH_MM[paperName]),
+                        calibrationLocale,
+                        { maximumFractionDigits: 1 },
+                      ),
+                      unit: translate('calibration.scale.fold.unit'),
+                      paper: translate(`printSummary.paper.${paperName}`),
+                    })}
+                  </span>
+                  {scaleGapInput.trim() !== '' && !validScaleGap && (
+                    <span className="text-sm text-error">
+                      {translate('calibration.number.error')}
+                    </span>
+                  )}
+                </label>
+              </section>
+            )}
+            <section className="space-y-3 rounded-box border border-base-300 p-4">
+              <h3 className="font-medium">
+                {translate('calibration.scale.ruler.heading')}
+              </h3>
+              <p>
+                {translate('calibration.scale.ruler.instruction', {
+                  distance: 200,
+                  unit: translate('calibration.scale.ruler.unit.mm'),
+                  inches: formatNumber(7.87, calibrationLocale, {
+                    maximumFractionDigits: 2,
+                  }),
+                  inchUnit: translate('calibration.scale.ruler.unit.inch'),
+                })}
+              </p>
+              <label className="form-control max-w-sm gap-1">
+                <span className="label-text">
+                  {translate('calibration.scale.ruler.input.label')}
+                </span>
+                <input
+                  className="input input-bordered min-h-11 w-full"
+                  type="text"
+                  inputMode="decimal"
+                  aria-label={translate('calibration.scale.ruler.input.label')}
+                  aria-describedby="ruler-distance-error"
+                  aria-invalid={
+                    rulerDistanceInput.trim() !== '' && !validRulerDistance
+                  }
+                  value={rulerDistanceInput}
+                  onChange={(event) =>
+                    setRulerDistanceInput(event.currentTarget.value)
+                  }
+                />
+                {rulerDistanceInput.trim() !== '' && !validRulerDistance && (
+                  <span id="ruler-distance-error" className="text-sm text-error">
+                    {translate('calibration.number.error')}
+                  </span>
                 )}
-              </span>
-              {scaleGapInput.trim() !== '' && !validScaleGap && (
-                <span className="text-sm text-error">Enter a number.</span>
-              )}
-            </label>
-            {scaleEstimate && (
-              <div className="space-y-1" role="status" aria-live="polite">
-                <p>
-                  {scaleEstimate.verdict === 'OK'
-                    ? 'The printer scale is close to 100 percent.'
-                    : scaleEstimate.verdict === 'TOO_SMALL'
-                      ? 'The printer made the page smaller. Print again at Actual Size and do not use Fit to Page.'
-                      : 'The printer made the page larger. Print again at Actual Size and do not use Fit to Page.'}
-                </p>
-                <p>{estimatedScaleMessage(scaleEstimate.scale)}</p>
+              </label>
+            </section>
+            {scaleEstimates.length > 0 && (
+              <div className="space-y-2" role="status" aria-live="polite">
+                {scaleEstimates.map(({ method, estimate }) => (
+                  <div key={method} className="space-y-1">
+                    {scaleEstimates.length > 1 && (
+                      <p className="font-medium">{method}</p>
+                    )}
+                    <p>
+                      {translate(
+                        estimate.verdict === 'OK'
+                          ? 'calibration.scale.verdict.ok'
+                          : estimate.verdict === 'TOO_SMALL'
+                            ? 'calibration.scale.verdict.small'
+                            : 'calibration.scale.verdict.large',
+                      )}
+                    </p>
+                    <p>
+                      {translate('calibration.scale.estimate', {
+                        scale: formatPercent(estimate.scale, calibrationLocale, 1),
+                      })}
+                    </p>
+                  </div>
+                ))}
+                {hasFoldGauge &&
+                  scaleEstimate &&
+                  rulerEstimate &&
+                  scaleEstimatesDisagree(
+                    scaleEstimate.scale,
+                    rulerEstimate.scale,
+                  ) && (
+                    <p>{translate('calibration.scale.disagree')}</p>
+                  )}
               </div>
             )}
           </li>
         </ol>
       ) : (
-        <p>This card size has no long scale on the calibration sheet.</p>
+        <p>{translate('calibration.scale.unavailable')}</p>
       )}
       <ol
         start={hasCalibrationScale ? 4 : 3}

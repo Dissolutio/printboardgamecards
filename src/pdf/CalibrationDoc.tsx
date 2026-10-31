@@ -2,7 +2,6 @@ import { Fragment } from 'react'
 import { Document, Page, Polygon, Svg, Text, View } from '@react-pdf/renderer'
 import {
   applyCalibration,
-  DEFAULT_BLEED,
   mmToPt,
   type Size,
 } from '../lib/geometry.ts'
@@ -10,6 +9,7 @@ import type { Grid, Calibration } from '../lib/layout.ts'
 import { calibrationMarks, type CalibrationMark } from '../lib/calibration.ts'
 import {
   calibrationScaleGaugeY,
+  trimRects,
   cornerLabelBoxes,
   calibrationScaleY,
   cornerScaleTicks,
@@ -28,43 +28,6 @@ type CalibrationDocProps = {
 }
 
 const CALIBRATION_PAGE_LABELS = ['FRONT ▲', 'BACK ▲'] as const
-
-type TrimRect = {
-  left: number
-  top: number
-  width: number
-  height: number
-}
-
-export function trimRects(
-  grid: Grid,
-  cardSize: Size,
-  calibration: Calibration,
-  side: 'front' | 'back',
-): TrimRect[] {
-  const rects: TrimRect[] = []
-
-  for (let row = 0; row < grid.rows; row += 1) {
-    for (let col = 0; col < grid.cols; col += 1) {
-      const cellCol = side === 'front' ? col : grid.cols - 1 - col
-      const cellOrigin = applyCalibration(
-        {
-          x: grid.originX + cellCol * grid.cellW,
-          y: grid.originY + row * grid.cellH,
-        },
-        calibration,
-      )[side]
-      rects.push({
-        left: cellOrigin.x + DEFAULT_BLEED,
-        top: cellOrigin.y + DEFAULT_BLEED,
-        width: cardSize.width,
-        height: cardSize.height,
-      })
-    }
-  }
-
-  return rects
-}
 
 function CalibrationCrosshair({ mark }: { mark: CalibrationMark }) {
   const size = 4
@@ -193,10 +156,12 @@ function FullWidthScale({
 
 function FoldGuide({
   x,
+  paperWidthPt,
   y,
   side,
 }: {
   x: number
+  paperWidthPt: number
   y: number
   side: 'left' | 'right'
 }) {
@@ -218,16 +183,17 @@ function FoldGuide({
       <Text
         style={{
           position: 'absolute',
-          left: x - 14,
-          top: y - 13,
-          width: 28,
-          height: 5,
+          left: side === 'left' ? 1 : x + 1,
+          top: y - 6,
+          width: side === 'left' ? x - 2 : paperWidthPt - x - 2,
+          height: 12,
           fontSize: 5,
-          textAlign: 'center',
+          lineHeight: 5,
+          textAlign: side === 'left' ? 'right' : 'left',
           color: '#000000',
         }}
       >
-        Fold here
+        {'Fold\nhere'}
       </Text>
     </>
   )
@@ -504,8 +470,18 @@ export default function CalibrationDoc({
             )}
             {side === 'front' && scaleY !== null && gaugeY !== null && (
               <>
-                <FoldGuide x={foldXs.left} y={scaleY} side="left" />
-                <FoldGuide x={foldXs.right} y={scaleY} side="right" />
+                <FoldGuide
+                  x={foldXs.left}
+                  paperWidthPt={paper.width}
+                  y={scaleY}
+                  side="left"
+                />
+                <FoldGuide
+                  x={foldXs.right}
+                  paperWidthPt={paper.width}
+                  y={scaleY}
+                  side="right"
+                />
                 <ScaleGauge paperWidthPt={paper.width} y={gaugeY} side="left" />
                 <ScaleGauge paperWidthPt={paper.width} y={gaugeY} side="right" />
               </>

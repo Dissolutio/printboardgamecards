@@ -215,13 +215,18 @@ function App() {
     setObservedYmm,
     scaleGapInput,
     setScaleGapInput,
+    rulerDistanceInput,
+    setRulerDistanceInput,
     calibrationUpdated,
     setCalibrationUpdated,
     calibrationStorageWarning,
     calibrationPt,
     hasCalibrationScale,
+    hasFoldGauge,
     validScaleGap,
     scaleEstimate,
+    validRulerDistance,
+    rulerEstimate,
     commitCalibrationAxis,
     resetCalibration,
     applyObservedCorrection,
@@ -573,10 +578,15 @@ function App() {
             printerProfiles={printerProfiles}
             activeProfile={activeProfile}
             hasCalibrationScale={hasCalibrationScale}
+            hasFoldGauge={hasFoldGauge}
             scaleGapInput={scaleGapInput}
             setScaleGapInput={setScaleGapInput}
             validScaleGap={validScaleGap}
             scaleEstimate={scaleEstimate}
+            rulerDistanceInput={rulerDistanceInput}
+            setRulerDistanceInput={setRulerDistanceInput}
+            validRulerDistance={validRulerDistance}
+            rulerEstimate={rulerEstimate}
             paperName={paperName}
             observedXmm={observedXmm}
             setObservedXmm={setObservedXmm}

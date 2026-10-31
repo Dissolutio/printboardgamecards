@@ -1,4 +1,11 @@
-import { DEFAULT_BLEED, mmToPt, type Point, type Size } from './geometry.ts'
+import {
+  applyCalibration,
+  DEFAULT_BLEED,
+  mmToPt,
+  type Point,
+  type Size,
+} from './geometry.ts'
+import type { Calibration, Grid } from './layout.ts'
 
 export const SHEET_WIDTH_MM = {
   LETTER: 215.9,
@@ -25,6 +32,43 @@ export type CornerLabelBox = {
   top: number
   width: number
   height: number
+}
+
+export type TrimRect = {
+  left: number
+  top: number
+  width: number
+  height: number
+}
+
+export function trimRects(
+  grid: Grid,
+  cardSize: Size,
+  calibration: Calibration,
+  side: 'front' | 'back',
+): TrimRect[] {
+  const rects: TrimRect[] = []
+
+  for (let row = 0; row < grid.rows; row += 1) {
+    for (let col = 0; col < grid.cols; col += 1) {
+      const cellCol = side === 'front' ? col : grid.cols - 1 - col
+      const cellOrigin = applyCalibration(
+        {
+          x: grid.originX + cellCol * grid.cellW,
+          y: grid.originY + row * grid.cellH,
+        },
+        calibration,
+      )[side]
+      rects.push({
+        left: cellOrigin.x + DEFAULT_BLEED,
+        top: cellOrigin.y + DEFAULT_BLEED,
+        width: cardSize.width,
+        height: cardSize.height,
+      })
+    }
+  }
+
+  return rects
 }
 
 function roundThousandth(value: number): number {

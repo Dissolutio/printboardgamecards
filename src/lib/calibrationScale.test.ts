@@ -74,6 +74,12 @@ describe('fold guide and gauge geometry', () => {
       expect(leftTicks.map(({ mm }) => mm)).toEqual(
         Array.from({ length: 29 }, (_, index) => index / 2),
       )
+      for (let index = 1; index < leftTicks.length; index += 1) {
+        expect(leftTicks[index]!.xPt - leftTicks[index - 1]!.xPt).toBeCloseTo(
+          mmToPt(0.5),
+          2,
+        )
+      }
       expect(leftTicks.map(({ xPt }) => xPt)).toEqual(
         leftTicks.map(({ xPt }) => Math.round(xPt * 1000) / 1000),
       )
@@ -284,6 +290,10 @@ describe('estimatePrintScaleFromRuler', () => {
     expect(estimatePrintScaleFromRuler(194)).toEqual({
       scale: 0.97,
       verdict: 'TOO_SMALL',
+    })
+    expect(estimatePrintScaleFromRuler(206)).toEqual({
+      scale: 1.03,
+      verdict: 'TOO_LARGE',
     })
   })
 
