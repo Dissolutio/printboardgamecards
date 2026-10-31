@@ -141,10 +141,7 @@ function App() {
     handleError,
   } = cardState
   const [screen, setScreen] = useState<AppScreen>(() => chooseScreen(cards))
-
-  useEffect(() => {
-    if (chooseScreen(cards) === 'workspace') setScreen('workspace')
-  }, [cards])
+  const currentScreen = chooseScreen(cards) === 'workspace' ? 'workspace' : screen
 
   function updateSettings(next: Partial<HistorySettings>) {
     const updated = cardState.commitSettings(next)
@@ -288,7 +285,6 @@ function App() {
     starterDeckError,
     exportError,
     setExportError,
-    confirm,
     handleSaveProject,
     handleLoadProject,
     handleCreateStarterDeck,
@@ -511,7 +507,7 @@ function App() {
 
   return (
     <>
-      {screen === 'start' ? (
+      {currentScreen === 'start' ? (
         <StartScreen
           cardSize={cardSize}
           presetName={presetName}

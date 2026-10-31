@@ -40,7 +40,6 @@ type StarterDeckPanelProps = {
   cardWidthMm: string
   cardHeightMm: string
   paperName: string
-  paperLabel: string
   disabled: boolean
   isLoadingManifest: boolean
   isProcessing: boolean
@@ -61,7 +60,6 @@ export default function StarterDeckPanel({
   cardWidthMm,
   cardHeightMm,
   paperName,
-  paperLabel,
   disabled,
   isLoadingManifest,
   isProcessing,

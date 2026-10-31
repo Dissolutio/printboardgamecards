@@ -33,7 +33,7 @@ describe('summarizeStartDeck', () => {
     })
 
     expect(summary.text).toBe(
-      '52 cards. 104 pieces. 13 pages on Letter. 8 pieces per page.',
+      '52 cards. 104 card sides. 13 pages on Letter. 8 card sides per page.',
     )
   })
 

@@ -41,6 +41,10 @@ export function summarizeStartDeck({
     cards: [
       {
         id: 'start-summary',
+        frontProcessedSrc: 'start-summary-front',
+        frontCrop: { x: 0, y: 0, width: 1, height: 1 },
+        backProcessedSrc: 'start-summary-back',
+        backCrop: { x: 0, y: 0, width: 1, height: 1 },
         bleedMode: 'IMAGE',
         frontBackground: { enabled: false, color: '#ffffff' },
         backBackground: { enabled: false, color: '#ffffff' },
@@ -59,9 +63,9 @@ export function summarizeStartDeck({
   const paperLabel = paperName === 'LETTER' ? 'Letter' : 'A4'
   const piecesText =
     exportMode === 'PRINT_GLUE'
-      ? `${number(cardCount * 2)} pieces. `
+      ? `${number(cardCount * 2)} card sides. `
       : ''
-  const perPageLabel = exportMode === 'PRINT_GLUE' ? 'pieces' : 'cards'
+  const perPageLabel = exportMode === 'PRINT_GLUE' ? 'card sides' : 'cards'
 
   return {
     ...summary,

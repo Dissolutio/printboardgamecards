@@ -146,7 +146,6 @@ function StartScreen({
             cardWidthMm={cardWidthMm}
             cardHeightMm={cardHeightMm}
             paperName={paperName}
-            paperLabel={paperLabel}
             disabled={disabled}
             isLoadingManifest={isLoadingManifest}
             isProcessing={isProcessing}
@@ -162,7 +161,7 @@ function StartScreen({
         <section className="trust-grid" aria-label="Printing information">
           <article className="trust-tile" id="how-printing-works">
             <strong>{formatNumber(summary.cardsPerPage, 'en')}</strong>
-            <span>{exportMode === 'PRINT_GLUE' ? 'Pieces per page' : 'Cards per page'}</span>
+            <span>{exportMode === 'PRINT_GLUE' ? 'Card sides per page' : 'Cards per page'}</span>
             <p>
               {exportMode === 'PRINT_GLUE'
                 ? `Print and glue on ${paperLabel} paper.`
