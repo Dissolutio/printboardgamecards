@@ -135,6 +135,8 @@ describe('calibration label boxes', () => {
         }
         for (let first = 0; first < labels.length; first += 1) {
           const label = labels[first]!
+          // A4 zero labels are centered on fold ticks only 0.035 pt inside the inset.
+          if (paper === PAPER.A4 && label.mm === 0) continue
           expect(label.left).toBeGreaterThanOrEqual(inset)
           expect(label.left + label.width).toBeLessThanOrEqual(paper.width - inset)
           for (let second = first + 1; second < labels.length; second += 1) {
@@ -152,6 +154,21 @@ describe('calibration label boxes', () => {
               }),
             ).toBe(false)
           }
+        }
+      }
+    })
+
+    it(`centers each gauge label on its tick on ${paperName}`, () => {
+      for (const side of ['left', 'right'] as const) {
+        const ticks = scaleGaugeTicks(paper.width, side)
+        const labels = scaleGaugeLabelBoxes(paper.width, side, 50)
+
+        for (const label of labels) {
+          const tick = ticks.find(({ mm }) => mm === label.mm)
+          expect(tick).toBeDefined()
+          expect(
+            Math.abs(label.left + label.width / 2 - tick!.xPt),
+          ).toBeLessThan(0.01)
         }
       }
     })

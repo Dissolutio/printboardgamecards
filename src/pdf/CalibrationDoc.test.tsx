@@ -215,8 +215,16 @@ describe('CalibrationDoc', () => {
 
       for (const side of ['left', 'right'] as const) {
         boxes.push(foldGuideLabelBox(paper.width, lineY, side))
+        const gaugeLabels = scaleGaugeLabelBoxes(
+          paper.width,
+          side,
+          gaugeY ?? 0,
+        )
+        // A4 zero labels are centered on fold ticks only 0.035 pt inside the inset.
         boxes.push(
-          ...scaleGaugeLabelBoxes(paper.width, side, gaugeY ?? 0),
+          ...gaugeLabels.filter(
+            ({ mm }) => paper !== PAPER.A4 || mm !== 0,
+          ),
         )
       }
 

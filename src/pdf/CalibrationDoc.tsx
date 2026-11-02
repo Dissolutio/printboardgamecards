@@ -237,7 +237,7 @@ function ScaleGauge({
             width: label.width,
             height: label.height,
             fontSize: label.fontSize,
-            textAlign: side === 'left' ? 'left' : 'right',
+            textAlign: 'center',
             color: '#000000',
           }}
         >

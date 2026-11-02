@@ -234,7 +234,6 @@ export function scaleGaugeLabelBoxes(
 ): (CalibrationLabelBox & { mm: number; text: string })[] {
   const fontSize = 4.5
   const digitWidth = 0.556 * fontSize
-  const gutter = 3
 
   return scaleGaugeTicks(paperWidthPt, side)
     .filter((tick) => tick.label !== undefined)
@@ -245,10 +244,7 @@ export function scaleGaugeLabelBoxes(
       return {
         mm: tick.mm,
         text,
-        left:
-          side === 'left'
-            ? tick.xPt + gutter
-            : tick.xPt - gutter - width,
+        left: tick.xPt - width / 2,
         top: y + (tick.mm <= 8 ? 5 : 11),
         width,
         height: 5,
