@@ -32,6 +32,29 @@ export const en: Catalog = {
   'calibration.scale.verdict.large':
     'The printer made the page larger. Print again at Actual Size and do not use Fit to Page.',
   'calibration.scale.estimate': 'Estimated printer scale is {scale}.',
+  'calibration.scale.intro':
+    'Check that your printer printed at 100 percent. Use either method.',
+  'calibration.scale.fold.heading': 'Method A: Fold the paper',
+  'calibration.scale.fold.step1':
+    'Find the two dashed fold lines at the ends of the long scale on the front page.',
+  'calibration.scale.fold.step2':
+    'Fold the left edge of the paper over so the crease runs along the left fold line. The printed side stays inside. Press the crease flat.',
+  'calibration.scale.fold.step3':
+    'The paper edge now lies over a small gauge. Read the number at the edge. If it falls between two ticks, choose the nearer tick. Unfold the paper.',
+  'calibration.scale.fold.step4': 'Do the same on the right edge.',
+  'calibration.scale.fold.input.label':
+    'Left reading plus right reading (tick spaces)',
+  'calibration.scale.fold.input.expected':
+    'The expected total is {value} {unit} on {paper} paper.',
+  'calibration.scale.fold.unit': 'tick spaces',
+  'calibration.scale.ruler.heading': 'Method B: Use a ruler',
+  'calibration.scale.ruler.instruction':
+    'Place a ruler on the two long end lines of the scale. They should be {distance} {unit} ({inches} {inchUnit}) apart.',
+  'calibration.scale.ruler.unit.mm': 'mm',
+  'calibration.scale.ruler.unit.inch': 'in',
+  'calibration.scale.ruler.input.label': 'Measured distance (mm)',
+  'calibration.scale.disagree':
+    'The two readings disagree. Check your folds and measurements.',
   'calibration.scale.unavailable':
     'This card size has no long scale on the calibration sheet.',
   'calibration.measured.legend': 'Measured correction',

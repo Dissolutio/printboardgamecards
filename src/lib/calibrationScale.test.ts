@@ -1,11 +1,17 @@
 import { describe, expect, it } from 'vitest'
 import {
   cornerLabelBoxes,
+  calibrationScaleGaugeY,
   calibrationScaleY,
   cornerScaleTicks,
   estimatePrintScale,
+  estimatePrintScaleFromRuler,
   expectedScaleGapSpaces,
+  foldGuideXs,
   fullWidthScaleTicks,
+  fullWidthScaleTickLength,
+  scaleEstimatesDisagree,
+  scaleGaugeTicks,
   scaleBandY,
   SHEET_WIDTH_MM,
 } from './calibrationScale.ts'
@@ -42,6 +48,51 @@ describe('fullWidthScaleTicks', () => {
     expect(ticks[96].label).toBeUndefined()
     expect(ticks.every(({ xPt }) => Number(xPt?.toFixed(3)) === xPt)).toBe(true)
   })
+
+  it('extends both long end ticks to the full 14 pt height', () => {
+    expect(fullWidthScaleTickLength(ticks[0]!)).toBe(14)
+    expect(fullWidthScaleTickLength(ticks.at(-1)!)).toBe(14)
+    expect(fullWidthScaleTickLength(ticks[100]!)).toBe(8)
+  })
+})
+
+describe('fold guide and gauge geometry', () => {
+  for (const [paperName, paper] of Object.entries(PAPER)) {
+    it(`places fold guides at the scale ends on ${paperName}`, () => {
+      const foldXs = foldGuideXs(paper.width)
+      const expectedLeft = Math.round((paper.width / 2 - mmToPt(100)) * 1000) / 1000
+      const expectedRight = Math.round((paper.width / 2 + mmToPt(100)) * 1000) / 1000
+
+      expect(foldXs).toEqual({ left: expectedLeft, right: expectedRight })
+      expect(fullWidthScaleTicks(paper.width)[0]?.xPt).toBe(foldXs.left)
+      expect(fullWidthScaleTicks(paper.width).at(-1)?.xPt).toBe(foldXs.right)
+
+      const leftTicks = scaleGaugeTicks(paper.width, 'left')
+      const rightTicks = scaleGaugeTicks(paper.width, 'right')
+      expect(leftTicks).toHaveLength(29)
+      expect(rightTicks).toHaveLength(29)
+      expect(leftTicks.map(({ mm }) => mm)).toEqual(
+        Array.from({ length: 29 }, (_, index) => index / 2),
+      )
+      for (let index = 1; index < leftTicks.length; index += 1) {
+        expect(leftTicks[index]!.xPt - leftTicks[index - 1]!.xPt).toBeCloseTo(
+          mmToPt(0.5),
+          2,
+        )
+      }
+      expect(leftTicks.map(({ xPt }) => xPt)).toEqual(
+        leftTicks.map(({ xPt }) => Math.round(xPt * 1000) / 1000),
+      )
+      expect(leftTicks.map(({ xPt }) => Math.round((paper.width - xPt) * 1000) / 1000)).toEqual(
+        rightTicks.map(({ xPt }) => xPt),
+      )
+      expect(leftTicks.filter(({ kind }) => kind === 'major').map(({ label }) => label)).toEqual(
+        ['0', '2', '4', '6', '8', '10', '12', '14'],
+      )
+      expect(leftTicks.filter(({ kind }) => kind === 'mid')).toHaveLength(7)
+      expect(leftTicks.filter(({ kind }) => kind === 'minor')).toHaveLength(14)
+    })
+  }
 })
 
 describe('cornerScaleTicks', () => {
@@ -233,11 +284,56 @@ describe('estimatePrintScale', () => {
   })
 })
 
+describe('estimatePrintScaleFromRuler', () => {
+  it('uses the 200 mm ruler distance and existing verdict thresholds', () => {
+    expect(estimatePrintScaleFromRuler(200)).toEqual({ scale: 1, verdict: 'OK' })
+    expect(estimatePrintScaleFromRuler(194)).toEqual({
+      scale: 0.97,
+      verdict: 'TOO_SMALL',
+    })
+    expect(estimatePrintScaleFromRuler(206)).toEqual({
+      scale: 1.03,
+      verdict: 'TOO_LARGE',
+    })
+  })
+
+  it('rejects non-finite and non-positive measurements', () => {
+    for (const measuredMm of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(() => estimatePrintScaleFromRuler(measuredMm)).toThrow(RangeError)
+    }
+  })
+})
+
+describe('scaleEstimatesDisagree', () => {
+  it('reports differences greater than 1.5 percentage points', () => {
+    expect(scaleEstimatesDisagree(1, 0.985)).toBe(false)
+    expect(scaleEstimatesDisagree(1, 0.984)).toBe(true)
+    expect(scaleEstimatesDisagree(1.02, 1)).toBe(true)
+  })
+})
+
 describe('expectedScaleGapSpaces', () => {
   it('returns the total expected gap spaces for A4 and Letter paper', () => {
     expect(expectedScaleGapSpaces(SHEET_WIDTH_MM.A4)).toBe(10)
     expect(expectedScaleGapSpaces(SHEET_WIDTH_MM.LETTER)).toBeCloseTo(15.9)
   })
+})
+
+describe('fold gap simulation', () => {
+  for (const [paperName, sheetWidthMm] of Object.entries(SHEET_WIDTH_MM)) {
+    for (const scale of [0.95, 0.97, 1, 1.02, 1.04]) {
+      it(`estimates ${scale} scale on ${paperName}`, () => {
+        const perSideGap =
+          (sheetWidthMm / 2 - 100 * scale) / scale
+        const estimate = estimatePrintScale({
+          sheetWidthMm,
+          gapSpaces: perSideGap + perSideGap,
+        })
+
+        expect(estimate.scale).toBeCloseTo(scale, 4)
+      })
+    }
+  }
 })
 
 describe('calibrationScaleY', () => {
@@ -277,6 +373,9 @@ describe('calibrationScaleY', () => {
 
     expect(
       calibrationScaleY({ paper, grid, cardSize, backOffsetY: 0 }),
+    ).toBeNull()
+    expect(
+      calibrationScaleGaugeY({ paper, grid, cardSize, backOffsetY: 0 }),
     ).toBeNull()
   })
 })
