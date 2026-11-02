@@ -44,6 +44,7 @@ export type CornerLabelBox = {
   top: number
   width: number
   height: number
+  fontSize: number
 }
 
 export type TrimRect = {
@@ -52,6 +53,9 @@ export type TrimRect = {
   width: number
   height: number
 }
+
+const SCALE_LABEL_FONT_SIZE = 4.5
+const SCALE_LABEL_DIGIT_WIDTH = 0.556 * SCALE_LABEL_FONT_SIZE
 
 export function trimRects(
   grid: Grid,
@@ -91,45 +95,46 @@ export function cornerLabelBoxes(
   mark: Point,
   paper: Size,
 ): CornerLabelBox[] {
-  void paper
   const halfLength = mmToPt(5)
   const labelOffset = halfLength + 7
-  const width = 7
+  const fontSize = SCALE_LABEL_FONT_SIZE
   const height = 7
+  const horizontalLabel = (text: string, direction: -1 | 1): CornerLabelBox => {
+    const width = text.length * SCALE_LABEL_DIGIT_WIDTH
+    const desiredLeft =
+      mark.x + direction * labelOffset - width / 2
+    const left = Math.max(14, Math.min(paper.width - 14 - width, desiredLeft))
+
+    return {
+      axis: 'horizontal',
+      text,
+      left,
+      top: mark.y - 5 - height,
+      width,
+      height,
+      fontSize,
+    }
+  }
+  const verticalLabel = (text: string, direction: -1 | 1): CornerLabelBox => {
+    const width = text.length * SCALE_LABEL_DIGIT_WIDTH
+    const desiredTop = mark.y + direction * labelOffset - height / 2
+
+    return {
+      axis: 'vertical',
+      text,
+      left: mark.x + 5,
+      top: Math.max(14, Math.min(paper.height - 14 - height, desiredTop)),
+      width,
+      height,
+      fontSize,
+    }
+  }
 
   return [
-    {
-      axis: 'horizontal',
-      text: '-5',
-      left: mark.x - labelOffset - width / 2,
-      top: mark.y - height / 2,
-      width,
-      height,
-    },
-    {
-      axis: 'horizontal',
-      text: '5',
-      left: mark.x + labelOffset - width / 2,
-      top: mark.y - height / 2,
-      width,
-      height,
-    },
-    {
-      axis: 'vertical',
-      text: '-5',
-      left: mark.x - width / 2,
-      top: mark.y - labelOffset - height / 2,
-      width,
-      height,
-    },
-    {
-      axis: 'vertical',
-      text: '5',
-      left: mark.x - width / 2,
-      top: mark.y + labelOffset - height / 2,
-      width,
-      height,
-    },
+    horizontalLabel('-5', -1),
+    horizontalLabel('5', 1),
+    verticalLabel('-5', -1),
+    verticalLabel('5', 1),
   ]
 }
 
@@ -233,8 +238,8 @@ export function scaleGaugeLabelBoxes(
   side: 'left' | 'right',
   y: number,
 ): (CalibrationLabelBox & { mm: number; text: string })[] {
-  const fontSize = 4.5
-  const digitWidth = 0.556 * fontSize
+  const fontSize = SCALE_LABEL_FONT_SIZE
+  const digitWidth = SCALE_LABEL_DIGIT_WIDTH
 
   return scaleGaugeTicks(paperWidthPt, side)
     .filter((tick) => tick.label !== undefined)
