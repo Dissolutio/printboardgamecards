@@ -1,4 +1,4 @@
-import { Polygon, renderToBuffer, Svg, Text } from '@react-pdf/renderer'
+import { Polygon, renderToBuffer, Svg, Text, View } from '@react-pdf/renderer'
 import { isValidElement, type ReactElement, type ReactNode } from 'react'
 import { describe, expect, it } from 'vitest'
 import {
@@ -39,6 +39,70 @@ function elementsIn(node: ReactNode): ReactElement[] {
 
   const element = node as ReactElement<{ children?: ReactNode }>
   return [element, ...elementsIn(element.props.children)]
+}
+
+const calibrationComponents = new Set([
+  'CalibrationCrosshair',
+  'FullWidthScale',
+  'FoldGuide',
+  'ScaleGauge',
+  'ScaleDimensionNote',
+  'CornerScale',
+  'BackMarkCrosshair',
+])
+
+function expandedCalibrationElements(node: ReactNode): ReactElement[] {
+  if (Array.isArray(node)) return node.flatMap(expandedCalibrationElements)
+  if (!isValidElement(node)) return []
+
+  const element = node as ReactElement<{ children?: ReactNode }>
+  if (
+    typeof element.type === 'function' &&
+    calibrationComponents.has(element.type.name)
+  ) {
+    const render = element.type as (props: typeof element.props) => ReactNode
+    return expandedCalibrationElements(render(element.props))
+  }
+  return [element, ...expandedCalibrationElements(element.props.children)]
+}
+
+async function inflatePdfStreams(bytes: Uint8Array): Promise<string[]> {
+  const source = new TextDecoder('latin1').decode(bytes)
+  const streamHeader = /\/Length\s+(\d+)\s*\/Filter\s*\/FlateDecode\s*>>\s*stream\r?\n/g
+  const streams: string[] = []
+  let match = streamHeader.exec(source)
+
+  while (match) {
+    const start = streamHeader.lastIndex
+    const length = Number(match[1])
+    const compressed = new Blob([bytes.slice(start, start + length)])
+    const inflated = compressed.stream().pipeThrough(new DecompressionStream('deflate'))
+    streams.push(await new Response(inflated).text())
+    streamHeader.lastIndex = start + length
+    match = streamHeader.exec(source)
+  }
+
+  return streams
+}
+
+function extractPdfText(content: string): string {
+  const textArrays = content.matchAll(/\[([^\]]*)\]\s*TJ/g)
+
+  return [...textArrays]
+    .map(([, array]) =>
+      [...array!.matchAll(/<([0-9a-f]+)>|\(([^)]*)\)/gi)]
+        .map(([, hex, literal]) =>
+          hex
+            ? Array.from({ length: hex.length / 2 }, (_, index) =>
+                String.fromCharCode(
+                  Number.parseInt(hex.slice(index * 2, index * 2 + 2), 16),
+                ),
+              ).join('')
+            : literal?.replace(/\\([\\()])/g, '$1') ?? '',
+        )
+        .join(''),
+    )
+    .join('')
 }
 
 function intersects(
@@ -140,6 +204,73 @@ describe('CalibrationDoc', () => {
       ),
     ).toEqual(['left', 'right'])
   })
+
+  for (const { paper } of paperCases) {
+    it(`keeps text boxes tall enough on both ${paper.width} pt pages`, () => {
+      const cardSize = CARD_PRESETS.POKER
+      const tree = CalibrationDoc({
+        paper,
+        cardSize,
+        grid: calculateGrid({ paper, card: cardSize }),
+        calibration: { offsetX: 0, offsetY: 0 },
+      })
+      const textElements = expandedCalibrationElements(tree).filter(
+        (element) => element.type === Text,
+      )
+
+      expect(textElements.length).toBeGreaterThan(0)
+      for (const element of textElements) {
+        const style = (element.props as {
+          style: { height?: unknown; fontSize?: unknown }
+        }).style
+        if (
+          typeof style.height === 'number' &&
+          typeof style.fontSize === 'number'
+        ) {
+          expect(style.height).toBeGreaterThanOrEqual(style.fontSize * 1.4)
+        }
+      }
+    })
+
+    it(`keeps fold dashes clear of the page heading on ${paper.width} pt paper`, () => {
+      const cardSize = CARD_PRESETS.POKER
+      const tree = CalibrationDoc({
+        paper,
+        cardSize,
+        grid: calculateGrid({ paper, card: cardSize }),
+        calibration: { offsetX: 0, offsetY: 0 },
+      })
+      const guides = elementsIn(tree).filter(
+        (element) =>
+          typeof element.type === 'function' && element.type.name === 'FoldGuide',
+      )
+
+      for (const guide of guides) {
+        const render = guide.type as (props: {
+          x: number
+          paperWidthPt: number
+          y: number
+          side: 'left' | 'right'
+        }) => ReactNode
+        const props = guide.props as {
+          x: number
+          paperWidthPt: number
+          y: number
+          side: 'left' | 'right'
+        }
+        const dashTops = elementsIn(render(props))
+          .filter((element) => element.type === View)
+          .map(
+            (element) =>
+              (element.props as { style: { top: number } }).style.top,
+          )
+
+        expect(Math.min(...dashTops) - 24).toBeGreaterThanOrEqual(3)
+      }
+
+      expect(guides).toHaveLength(2)
+    })
+  }
 
   for (const { paper } of paperCases) {
     it(`keeps widened gauge label render boxes centered on ticks on ${paper.width} pt paper`, () => {
@@ -252,13 +383,13 @@ describe('CalibrationDoc', () => {
           left: paper.width / 2 - 155,
           top: Math.max(17, lineY - 13),
           width: 150,
-          height: 5,
+          height: 8,
         },
         {
           left: paper.width / 2 + 5,
           top: Math.max(17, lineY - 13),
           width: 60,
-          height: 5,
+          height: 8,
         },
       )
 
@@ -325,13 +456,13 @@ describe('CalibrationDoc', () => {
             left: centerX - 155,
             top: noteY,
             width: 150,
-            height: 5,
+            height: 8,
           },
           {
             left: centerX + 5,
             top: noteY,
             width: 60,
-            height: 5,
+            height: 8,
           },
         ]
 
@@ -388,6 +519,26 @@ describe('CalibrationDoc', () => {
       expect(pageMediaBoxes(pdfBytes)).toEqual([expectedBox, expectedBox])
     })
   }
+
+  it('renders fold and dimension labels as extractable Letter Poker PDF text', async () => {
+    const paper = PAPER.LETTER
+    const cardSize = CARD_PRESETS.POKER
+    const pdfBytes = await renderToBuffer(
+      <CalibrationDoc
+        paper={paper}
+        cardSize={cardSize}
+        grid={calculateGrid({ paper, card: cardSize })}
+        calibration={{ offsetX: 0, offsetY: 0 }}
+      />,
+    )
+    const pageContent = extractPdfText(
+      (await inflatePdfStreams(pdfBytes)).join('\n'),
+    )
+
+    expect(pageContent).toContain('Fold')
+    expect(pageContent).toContain('200 mm')
+    expect(pageContent).toContain('7.87')
+  })
 
   for (const { paper } of paperCases) {
     it(`renders front and calibrated back pages on ${paper.width}×${paper.height} pt`, async () => {

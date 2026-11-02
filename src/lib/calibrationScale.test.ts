@@ -217,9 +217,51 @@ describe('calibration label boxes', () => {
 
       const noteY = Math.max(17, y - 13)
       const noteBoxes = [
-        { left: paper.width / 2 - 155, top: noteY, width: 150, height: 5 },
-        { left: paper.width / 2 + 5, top: noteY, width: 60, height: 5 },
+        { left: paper.width / 2 - 155, top: noteY, width: 150, height: 8 },
+        { left: paper.width / 2 + 5, top: noteY, width: 60, height: 8 },
       ]
+      expect(captions).toEqual([
+        {
+          left: foldXs.left + 45,
+          top: 17,
+          width: 36,
+          height: 8,
+          fontSize: 5,
+          textAlign: 'left',
+        },
+        {
+          left: foldXs.right - 81,
+          top: 17,
+          width: 36,
+          height: 8,
+          fontSize: 5,
+          textAlign: 'right',
+        },
+      ])
+      const heading = { left: 14, top: 14, width: 40, height: 10 }
+      const scaleLine = {
+        left: 0,
+        top: y - 0.15,
+        width: paper.width,
+        height: 0.3,
+      }
+      for (const caption of captions) {
+        expect(intersects(caption, heading)).toBe(false)
+        expect(intersects(caption, scaleLine)).toBe(false)
+      }
+      for (const note of noteBoxes) {
+        expect(intersects(note, heading)).toBe(false)
+        expect(intersects(note, scaleLine)).toBe(false)
+        expect(note.left).toBeGreaterThanOrEqual(inset)
+        expect(note.top).toBeGreaterThanOrEqual(inset)
+        expect(note.left + note.width).toBeLessThanOrEqual(paper.width - inset)
+        expect(note.top + note.height).toBeLessThanOrEqual(paper.height - inset)
+        for (const label of scaleLabels) {
+          expect(intersects(note, label)).toBe(false)
+        }
+      }
+      expect(intersects(captions[0]!, captions[1]!)).toBe(false)
+      expect(intersects(noteBoxes[0]!, noteBoxes[1]!)).toBe(false)
       expect(
         captions.some((caption) =>
           noteBoxes.some((note) => intersects(caption, note)),

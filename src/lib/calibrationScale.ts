@@ -163,7 +163,7 @@ export function fullWidthScaleLabelBox(
           : x - width / 2,
     top: y + (Math.abs(tick.mm) === 100 ? 8 : 5),
     width,
-    height: 6,
+    height: Math.abs(tick.mm) === 100 ? 7 : 9,
     fontSize: Math.abs(tick.mm) === 100 ? 5 : 6,
   }
 }
@@ -189,12 +189,13 @@ export function foldGuideLabelBox(
 ): FoldGuideLabelBox {
   const x = foldGuideXs(paperWidthPt)[side]
   const width = 36
+  const labelOffset = 45
 
   return {
-    left: side === 'left' ? x + 3 : x - width - 3,
+    left: side === 'left' ? x + labelOffset : x - labelOffset - width,
     top: Math.max(17, y - 22),
     width,
-    height: 5,
+    height: 8,
     fontSize: 5,
     textAlign: side === 'left' ? 'left' : 'right',
   }
@@ -247,7 +248,7 @@ export function scaleGaugeLabelBoxes(
         left: tick.xPt - width / 2,
         top: y + (tick.mm <= 8 ? 5 : 11),
         width,
-        height: 5,
+        height: 7,
         fontSize,
       }
     })
