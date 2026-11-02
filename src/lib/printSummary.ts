@@ -22,6 +22,7 @@ export type ModeSummary = {
   pages: number
   sheets: number
   lastPageCards: number
+  lastPagePieces: number
   columns: number
   rows: number
   rotated: boolean
@@ -140,6 +141,7 @@ export function summarizePrint(input: PrintInput): ModeSummary {
       sheets: pages.length,
       lastPageCards:
         lastFrontPage?.placements.filter(({ side }) => side === 'front').length ?? 0,
+      lastPagePieces: pages.at(-1)?.placements.length ?? 0,
       columns: grid.cols,
       rows: grid.rows,
       rotated: grid.orientation === 'ROTATED',
@@ -155,6 +157,7 @@ export function summarizePrint(input: PrintInput): ModeSummary {
     pages: pagePairs.length * 2,
     sheets: pagePairs.length,
     lastPageCards: pagePairs.at(-1)?.front.length ?? 0,
+    lastPagePieces: pagePairs.at(-1)?.front.length ?? 0,
     columns: grid.cols,
     rows: grid.rows,
     rotated: false,

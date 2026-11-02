@@ -10,6 +10,10 @@ import {
   summarizePrint,
   type PrintMode,
 } from './printSummary.ts'
+import {
+  cardCollectionLabel,
+  printSummaryLabels,
+} from './printSummaryLabels.ts'
 import type { Card } from '../types.ts'
 
 function makeCard(id: string, quantity = 1, backSrc?: string): Card {
@@ -67,17 +71,51 @@ describe('summarizePrint', () => {
     const duplex = summarizePrint(input('POKER', 'LETTER', 'TWO_SIDES_HAND', cards))
 
     expect(glue).toMatchObject({ cardsPerPage: 8, pages: 7, sheets: 7, lastPageCards: 4 })
+    expect(glue.lastPagePieces).toBe(4)
     expect(duplex).toMatchObject({
       cardsPerPage: 4,
       pages: 26,
       sheets: 13,
       lastPageCards: 4,
+      lastPagePieces: 4,
+    })
+  })
+
+  it('counts pieces on the final glue page and cards on the final duplex page', () => {
+    const cards = [makeCard('poker', 52, 'back-poker')]
+    const glue = summarizePrint(input('POKER', 'LETTER', 'ONE_SIDE_GLUE', cards))
+    const duplex = summarizePrint(input('POKER', 'LETTER', 'TWO_SIDES_HAND', cards))
+
+    expect(glue).toMatchObject({
+      cardsPerPage: 8,
+      pages: 13,
+      lastPagePieces: 8,
+    })
+    expect(printSummaryLabels(glue, 52, 'en')).toMatchObject({
+      secondCount: '13',
+      secondLabel: 'pages for 52 cards',
+      modeLine: '8 pieces per page. 13 pages.',
+    })
+    expect(duplex).toMatchObject({
+      cardsPerPage: 4,
+      sheets: 13,
+      lastPagePieces: 4,
+    })
+    expect(printSummaryLabels(duplex, 52, 'en')).toMatchObject({
+      secondCount: '13',
+      secondLabel: 'sheets for 52 cards',
+      modeLine: '4 cards per page. 13 sheets.',
     })
   })
 
   it('returns zero pages and zero last-page cards for empty decks', () => {
     const result = summarizePrint(input('POKER', 'LETTER', 'ONE_SIDE_GLUE', []))
-    expect(result).toMatchObject({ pages: 0, sheets: 0, lastPageCards: 0 })
+    expect(result).toMatchObject({
+      pages: 0,
+      sheets: 0,
+      lastPageCards: 0,
+      lastPagePieces: 0,
+    })
     expect(result.cardsPerPage).toBeGreaterThan(0)
   })
 
@@ -183,5 +221,35 @@ describe('describeLayout', () => {
         translate,
       }),
     ).toBe('Letter paper. Print and glue. Cards turned to landscape, 2 columns by 4 rows.')
+  })
+})
+
+describe('printSummaryLabels', () => {
+  it('formats card and copy counts with singular and plural labels', () => {
+    expect(cardCollectionLabel(1, 1, 'en')).toBe('1 card, 1 copy in total')
+    expect(cardCollectionLabel(52, 60, 'en')).toBe(
+      '52 cards, 60 copies in total',
+    )
+  })
+
+  it('uses pieces and pages for glue and cards and sheets for duplex', () => {
+    const glue = summarizePrint(input('POKER', 'LETTER', 'ONE_SIDE_GLUE'))
+    const hand = summarizePrint(input('POKER', 'LETTER', 'TWO_SIDES_HAND'))
+    const machine = summarizePrint(input('POKER', 'LETTER', 'TWO_SIDES_MACHINE'))
+
+    expect(printSummaryLabels(glue, 52, 'en')).toMatchObject({
+      firstCount: '8',
+      firstLabel: 'pieces per page',
+      secondLabel: 'page for 52 cards',
+      modeLine: '8 pieces per page. 1 page.',
+    })
+    expect(printSummaryLabels(hand, 52, 'en')).toMatchObject({
+      firstLabel: 'cards per page',
+      secondLabel: 'sheet for 52 cards',
+      modeLine: '4 cards per page. 1 sheet.',
+    })
+    expect(printSummaryLabels(machine, 52, 'en').modeLine).toBe(
+      'Includes marks and a cut file. 4 cards per page.',
+    )
   })
 })
