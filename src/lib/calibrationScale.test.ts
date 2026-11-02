@@ -252,7 +252,15 @@ describe('calibration label boxes', () => {
       for (const note of noteBoxes) {
         expect(intersects(note, heading)).toBe(false)
         expect(intersects(note, scaleLine)).toBe(false)
+        expect(note.left).toBeGreaterThanOrEqual(inset)
+        expect(note.top).toBeGreaterThanOrEqual(inset)
+        expect(note.left + note.width).toBeLessThanOrEqual(paper.width - inset)
+        expect(note.top + note.height).toBeLessThanOrEqual(paper.height - inset)
+        for (const label of scaleLabels) {
+          expect(intersects(note, label)).toBe(false)
+        }
       }
+      expect(intersects(captions[0]!, captions[1]!)).toBe(false)
       expect(intersects(noteBoxes[0]!, noteBoxes[1]!)).toBe(false)
       expect(
         captions.some((caption) =>
