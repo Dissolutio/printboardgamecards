@@ -9,6 +9,7 @@ import {
   fullWidthScaleLabelBox,
   fullWidthScaleTicks,
   scaleGaugeLabelBoxes,
+  scaleGaugeTicks,
   trimRects,
 } from '../lib/calibrationScale.ts'
 import {
@@ -141,6 +142,54 @@ describe('CalibrationDoc', () => {
   })
 
   for (const { paper } of paperCases) {
+    it(`keeps widened gauge label render boxes centered on ticks on ${paper.width} pt paper`, () => {
+      const cardSize = CARD_PRESETS.POKER
+      const tree = CalibrationDoc({
+        paper,
+        cardSize,
+        grid: calculateGrid({ paper, card: cardSize }),
+        calibration: { offsetX: 0, offsetY: 0 },
+      })
+      const gauges = elementsIn(tree).filter(
+        (element) =>
+          typeof element.type === 'function' &&
+          element.type.name === 'ScaleGauge',
+      )
+
+      for (const gauge of gauges) {
+        const render = gauge.type as (props: {
+          paperWidthPt: number
+          y: number
+          side: 'left' | 'right'
+        }) => ReactNode
+        const props = gauge.props as {
+          paperWidthPt: number
+          y: number
+          side: 'left' | 'right'
+        }
+        const labels = elementsIn(render(props)).filter(
+          (element) => element.type === Text,
+        )
+
+        for (const element of labels) {
+          const text = (element.props as { children?: ReactNode }).children
+          const style = (element.props as {
+            style: { left: number; width: number }
+          }).style
+          const tick = scaleGaugeTicks(paper.width, props.side).find(
+            ({ mm }) => mm === Number(text),
+          )
+
+          expect(tick).toBeDefined()
+          expect(
+            Math.abs(style.left + style.width / 2 - tick!.xPt),
+          ).toBeLessThan(0.01)
+        }
+      }
+
+      expect(gauges).toHaveLength(2)
+    })
+
     it(`keeps Poker labels and marks inside the ${paper.width} pt page inset`, () => {
       const cardSize = CARD_PRESETS.POKER
       const grid = calculateGrid({ paper, card: cardSize })

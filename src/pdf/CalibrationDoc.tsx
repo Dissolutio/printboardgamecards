@@ -232,9 +232,10 @@ function ScaleGauge({
           key={`gauge-label-${side}-${label.mm}`}
           style={{
             position: 'absolute',
-            left: label.left,
+            // Add width so floating-point glyph advances do not trigger react-pdf wrapping.
+            left: label.left - 2,
             top: label.top,
-            width: label.width,
+            width: label.width + 4,
             height: label.height,
             fontSize: label.fontSize,
             textAlign: 'center',
