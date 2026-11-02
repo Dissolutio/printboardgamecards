@@ -5,6 +5,7 @@ import {
   calibrationScaleGaugeY,
   calibrationScaleY,
   cornerLabelBoxes,
+  cornerScaleTicks,
   foldGuideLabelBox,
   fullWidthScaleLabelBox,
   fullWidthScaleTicks,
@@ -420,6 +421,122 @@ describe('CalibrationDoc', () => {
     })
   }
 
+  for (const { paper } of paperCases) {
+    for (const [presetName, cardSize] of Object.entries(CARD_PRESETS)) {
+      it(`keeps ${presetName} corner labels clear on ${paper.width} pt paper`, () => {
+        const grid = calculateGrid({ paper, card: cardSize })
+        const marks = calibrationMarks(grid, paper, {
+          offsetX: 0,
+          offsetY: 0,
+        }).front
+        const trims = trimRects(grid, cardSize, {
+          offsetX: 0,
+          offsetY: 0,
+        }, 'front')
+        const trimEdges = trims.flatMap((trim) => [
+          { left: trim.left, top: trim.top, width: trim.width, height: 0.25 },
+          {
+            left: trim.left,
+            top: trim.top,
+            width: 0.25,
+            height: trim.height,
+          },
+          {
+            left: trim.left + trim.width - 0.25,
+            top: trim.top,
+            width: 0.25,
+            height: trim.height,
+          },
+          {
+            left: trim.left,
+            top: trim.top + trim.height - 0.25,
+            width: trim.width,
+            height: 0.25,
+          },
+        ])
+        const labels = marks.flatMap((mark) =>
+          cornerLabelBoxes(mark, paper).map((label) => ({ mark, label })),
+        )
+        const ticks = marks.flatMap((mark) =>
+          cornerScaleTicks().flatMap((tick) => {
+            const offset = tick.offsetPt ?? 0
+            const length =
+              tick.mm === 0 ? 6 : tick.kind === 'mid' ? 4 : 2
+            return [
+              {
+                mark,
+                rect: {
+                  left: mark.x + offset - 0.125,
+                  top: mark.y - length / 2,
+                  width: 0.25,
+                  height: length,
+                },
+              },
+              {
+                mark,
+                rect: {
+                  left: mark.x - length / 2,
+                  top: mark.y + offset - 0.125,
+                  width: length,
+                  height: 0.25,
+                },
+              },
+            ]
+          }),
+        )
+
+        for (let first = 0; first < labels.length; first += 1) {
+          const { mark, label } = labels[first]
+          const box = {
+            left: label.left,
+            top: label.top,
+            width: label.width,
+            height: label.height,
+          }
+          const circle = {
+            left: mark.x - 3,
+            top: mark.y - 3,
+            width: 6,
+            height: 6,
+          }
+
+          expect(label.fontSize).toBe(4.5)
+          expect(label.width).toBeCloseTo(label.text.length * 0.556 * 4.5)
+          expect(label.height).toBeGreaterThanOrEqual(label.fontSize * 1.4)
+          expect(box.left).toBeGreaterThanOrEqual(14)
+          expect(box.top).toBeGreaterThanOrEqual(14)
+          expect(box.left + box.width).toBeLessThanOrEqual(paper.width - 14)
+          expect(box.top + box.height).toBeLessThanOrEqual(paper.height - 14)
+          expect(intersects(box, circle)).toBe(false)
+          expect(trimEdges.some((edge) => intersects(box, edge))).toBe(false)
+          expect(
+            ticks
+              .filter(({ mark: tickMark }) => tickMark === mark)
+              .some(({ rect }) => intersects(box, rect)),
+          ).toBe(false)
+
+          if (label.axis === 'horizontal') {
+            expect(box.top + box.height).toBeLessThanOrEqual(mark.y - 5)
+          } else {
+            expect(box.left).toBeGreaterThanOrEqual(mark.x + 5)
+          }
+
+          for (let second = first + 1; second < labels.length; second += 1) {
+            const other = labels[second].label
+            expect(
+              intersects(box, {
+                left: other.left,
+                top: other.top,
+                width: other.width,
+                height: other.height,
+              }),
+            ).toBe(false)
+          }
+        }
+      })
+    }
+  }
+
   for (const [paperName, paper] of Object.entries(PAPER)) {
     for (const [presetName, cardSize] of Object.entries(CARD_PRESETS)) {
       it(`keeps fold gauges clear of trims, edges, and corner scales for ${presetName} on ${paperName}`, () => {
@@ -538,6 +655,8 @@ describe('CalibrationDoc', () => {
     expect(pageContent).toContain('Fold')
     expect(pageContent).toContain('200 mm')
     expect(pageContent).toContain('7.87')
+    expect(pageContent).toContain('-5')
+    expect(pageContent).toContain('5')
   })
 
   for (const { paper } of paperCases) {

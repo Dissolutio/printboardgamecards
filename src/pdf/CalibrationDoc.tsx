@@ -363,7 +363,7 @@ function CornerScale({
             top: label.top,
             width: label.width,
             height: label.height,
-            fontSize: 5,
+            fontSize: label.fontSize,
             textAlign: 'center',
             color: '#000000',
           }}

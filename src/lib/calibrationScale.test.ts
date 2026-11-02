@@ -358,6 +358,24 @@ describe('cornerScaleTicks', () => {
               width: 6,
               height: 6,
             }
+            const ticks = cornerScaleTicks().flatMap((tick) => {
+              const offset = tick.offsetPt ?? 0
+              const length = tick.mm === 0 ? 6 : tick.kind === 'mid' ? 4 : 2
+              return [
+                {
+                  left: mark.x + offset - 0.125,
+                  top: mark.y - length / 2,
+                  width: 0.25,
+                  height: length,
+                },
+                {
+                  left: mark.x - length / 2,
+                  top: mark.y + offset - 0.125,
+                  width: length,
+                  height: 0.25,
+                },
+              ]
+            })
 
             expect(labels).toHaveLength(4)
             expect(labels.map(({ axis, text }) => [axis, text])).toEqual([
@@ -367,7 +385,6 @@ describe('cornerScaleTicks', () => {
               ['vertical', '5'],
             ])
 
-            const trimIntersections: string[] = []
             for (let first = 0; first < labels.length; first += 1) {
               expect(intersects(labels[first], markCircle)).toBe(false)
               for (let second = first + 1; second < labels.length; second += 1) {
@@ -377,40 +394,33 @@ describe('cornerScaleTicks', () => {
                 expect(intersects(labels[first], line)).toBe(false)
               }
               for (const line of trimLines) {
-                if (intersects(labels[first], line)) {
-                  trimIntersections.push(`${labels[first].axis}:${labels[first].text}`)
-                }
+                expect(intersects(labels[first], line)).toBe(false)
+              }
+              for (const tick of ticks) {
+                expect(intersects(labels[first], tick)).toBe(false)
               }
 
-              const centerX = labels[first].left + labels[first].width / 2
-              const centerY = labels[first].top + labels[first].height / 2
-              const endpoint =
-                labels[first].axis === 'horizontal'
-                  ? mark.x + (labels[first].text === '5' ? arm : -arm)
-                  : mark.y + (labels[first].text === '5' ? arm : -arm)
-              const center = labels[first].axis === 'horizontal' ? centerX : centerY
-              const distanceBeyondEnd =
-                (center - endpoint) * (labels[first].text === '5' ? 1 : -1)
-
-              expect(
-                labels[first].axis === 'horizontal'
-                  ? Math.abs(centerY - mark.y)
-                  : Math.abs(centerX - mark.x),
-              ).toBeLessThanOrEqual(0.5)
-              expect(distanceBeyondEnd).toBeGreaterThan(0)
-              expect(distanceBeyondEnd).toBeLessThanOrEqual(10)
+              const { axis, text, left, top, width, height } = labels[first]
+              const isPositive = text === '5'
+              if (axis === 'horizontal') {
+                expect(top + height).toBeLessThanOrEqual(mark.y - 5)
+                const centerX = left + width / 2
+                const expectedCenter =
+                  mark.x + (isPositive ? arm + 7 : -(arm + 7))
+                expect(centerX).toBeCloseTo(expectedCenter)
+              } else {
+                expect(left).toBe(mark.x + 5)
+                const centerY = top + height / 2
+                const expectedCenter =
+                  mark.y + (isPositive ? arm + 7 : -(arm + 7))
+                expect(centerY).toBeCloseTo(expectedCenter)
+              }
             }
-            expect(trimIntersections.sort()).toEqual(
-              [
-                `horizontal:${isLeft ? '5' : '-5'}`,
-                `vertical:${isTop ? '5' : '-5'}`,
-              ].sort(),
-            )
             expect(labels.every(({ left, top, width, height }) =>
-              left >= 0 &&
-              top >= 0 &&
-              left + width <= paper.width &&
-              top + height <= paper.height,
+              left >= 14 &&
+              top >= 14 &&
+              left + width <= paper.width - 14 &&
+              top + height <= paper.height - 14,
             )).toBe(true)
           })
         }
