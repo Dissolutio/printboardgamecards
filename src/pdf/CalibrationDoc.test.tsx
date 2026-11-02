@@ -86,9 +86,7 @@ async function inflatePdfStreams(bytes: Uint8Array): Promise<string[]> {
 }
 
 function extractPdfText(content: string): string {
-  const textArrays = content.matchAll(
-    /\[((?:<[^>]+>|\([^)]*\)|[^\]])*)\]\s*TJ/g,
-  )
+  const textArrays = content.matchAll(/\[([^\]]*)\]\s*TJ/g)
 
   return [...textArrays]
     .map(([, array]) =>
