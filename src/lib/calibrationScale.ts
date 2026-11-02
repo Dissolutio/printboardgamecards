@@ -25,6 +25,18 @@ export type ScaleTick = {
   | { offsetPt: number; xPt?: never }
 )
 
+export type CalibrationLabelBox = {
+  left: number
+  top: number
+  width: number
+  height: number
+  fontSize: number
+}
+
+export type FoldGuideLabelBox = CalibrationLabelBox & {
+  textAlign: 'left' | 'right'
+}
+
 export type CornerLabelBox = {
   axis: 'horizontal' | 'vertical'
   text: string
@@ -135,6 +147,27 @@ export function fullWidthScaleTicks(paperWidthPt: number): ScaleTick[] {
   })
 }
 
+export function fullWidthScaleLabelBox(
+  tick: ScaleTick,
+  y: number,
+): CalibrationLabelBox {
+  const width = 26
+  const x = tick.xPt ?? 0
+
+  return {
+    left:
+      tick.mm === -100
+        ? x + 3
+        : tick.mm === 100
+          ? x - width - 3
+          : x - width / 2,
+    top: y + (Math.abs(tick.mm) === 100 ? 8 : 5),
+    width,
+    height: 6,
+    fontSize: Math.abs(tick.mm) === 100 ? 5 : 6,
+  }
+}
+
 export function fullWidthScaleTickLength(tick: ScaleTick): number {
   if (Math.abs(tick.mm) === 100) return 14
   return tick.kind === 'major' ? 8 : tick.kind === 'mid' ? 5 : 3
@@ -146,6 +179,24 @@ export function foldGuideXs(paperWidthPt: number): { left: number; right: number
   return {
     left: roundThousandth(centerX - scaleHalfWidth),
     right: roundThousandth(centerX + scaleHalfWidth),
+  }
+}
+
+export function foldGuideLabelBox(
+  paperWidthPt: number,
+  y: number,
+  side: 'left' | 'right',
+): FoldGuideLabelBox {
+  const x = foldGuideXs(paperWidthPt)[side]
+  const width = 36
+
+  return {
+    left: side === 'left' ? x + 3 : x - width - 3,
+    top: Math.max(17, y - 22),
+    width,
+    height: 5,
+    fontSize: 5,
+    textAlign: side === 'left' ? 'left' : 'right',
   }
 }
 
@@ -174,6 +225,32 @@ export function scaleGaugeTicks(
       ...(kind === 'major' ? { label: String(mm) } : {}),
     }
   })
+}
+
+export function scaleGaugeLabelBoxes(
+  paperWidthPt: number,
+  side: 'left' | 'right',
+  y: number,
+): (CalibrationLabelBox & { mm: number; text: string })[] {
+  const fontSize = 4.5
+  const digitWidth = 0.556 * fontSize
+
+  return scaleGaugeTicks(paperWidthPt, side)
+    .filter((tick) => tick.label !== undefined)
+    .map((tick) => {
+      const text = tick.label!
+      const width = text.length * digitWidth
+
+      return {
+        mm: tick.mm,
+        text,
+        left: tick.xPt - width / 2,
+        top: y + (tick.mm <= 8 ? 5 : 11),
+        width,
+        height: 5,
+        fontSize,
+      }
+    })
 }
 
 export function cornerScaleTicks(): ScaleTick[] {
@@ -314,7 +391,7 @@ export function calibrationScaleGaugeY({
     DEFAULT_BLEED +
     cardSize.height
   const gaugeTopOffset = 5
-  const gaugeBottomOffset = 11
+  const gaugeBottomOffset = 16
   const trimClearance = 6
   const edgeClearance = 17
 
