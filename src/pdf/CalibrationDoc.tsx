@@ -174,7 +174,7 @@ function FoldGuide({
           style={{
             position: 'absolute',
             left: x - 0.15,
-            top: y - 9 + index * 4,
+            top: y - 2 + index * 4,
             width: 0.3,
             height: 2.5,
             backgroundColor: '#000000',
@@ -184,8 +184,12 @@ function FoldGuide({
       <Text
         style={{
           position: 'absolute',
-          ...label,
+          left: label.left,
+          top: label.top,
+          width: label.width,
+          fontSize: label.fontSize,
           lineHeight: label.height,
+          textAlign: label.textAlign,
           color: '#000000',
         }}
       >
@@ -261,7 +265,7 @@ function ScaleDimensionNote({ paperWidthPt, y }: { paperWidthPt: number; y: numb
           left: centerX - 155,
           top: noteY,
           width: 150,
-          height: 5,
+          height: 8,
           fontSize: 5,
           textAlign: 'right',
           color: '#000000',
@@ -275,7 +279,7 @@ function ScaleDimensionNote({ paperWidthPt, y }: { paperWidthPt: number; y: numb
           left: centerX + 5,
           top: noteY,
           width: 60,
-          height: 5,
+          height: 8,
           fontSize: 5,
           textAlign: 'left',
           color: '#000000',
