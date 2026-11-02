@@ -10,7 +10,10 @@ import {
   summarizePrint,
   type PrintMode,
 } from './printSummary.ts'
-import { printSummaryLabels } from './printSummaryLabels.ts'
+import {
+  cardCollectionLabel,
+  printSummaryLabels,
+} from './printSummaryLabels.ts'
 import type { Card } from '../types.ts'
 
 function makeCard(id: string, quantity = 1, backSrc?: string): Card {
@@ -88,10 +91,20 @@ describe('summarizePrint', () => {
       pages: 13,
       lastPagePieces: 8,
     })
+    expect(printSummaryLabels(glue, 52, 'en')).toMatchObject({
+      secondCount: '13',
+      secondLabel: 'pages for 52 cards',
+      modeLine: '8 pieces per page. 13 pages.',
+    })
     expect(duplex).toMatchObject({
       cardsPerPage: 4,
       sheets: 13,
       lastPagePieces: 4,
+    })
+    expect(printSummaryLabels(duplex, 52, 'en')).toMatchObject({
+      secondCount: '13',
+      secondLabel: 'sheets for 52 cards',
+      modeLine: '4 cards per page. 13 sheets.',
     })
   })
 
@@ -212,6 +225,13 @@ describe('describeLayout', () => {
 })
 
 describe('printSummaryLabels', () => {
+  it('formats card and copy counts with singular and plural labels', () => {
+    expect(cardCollectionLabel(1, 1, 'en')).toBe('1 card, 1 copy in total')
+    expect(cardCollectionLabel(52, 60, 'en')).toBe(
+      '52 cards, 60 copies in total',
+    )
+  })
+
   it('uses pieces and pages for glue and cards and sheets for duplex', () => {
     const glue = summarizePrint(input('POKER', 'LETTER', 'ONE_SIDE_GLUE'))
     const hand = summarizePrint(input('POKER', 'LETTER', 'TWO_SIDES_HAND'))
@@ -220,12 +240,12 @@ describe('printSummaryLabels', () => {
     expect(printSummaryLabels(glue, 52, 'en')).toMatchObject({
       firstCount: '8',
       firstLabel: 'pieces per page',
-      secondLabel: '1 page for 52 cards',
+      secondLabel: 'page for 52 cards',
       modeLine: '8 pieces per page. 1 page.',
     })
     expect(printSummaryLabels(hand, 52, 'en')).toMatchObject({
       firstLabel: 'cards per page',
-      secondLabel: '1 sheet for 52 cards',
+      secondLabel: 'sheet for 52 cards',
       modeLine: '4 cards per page. 1 sheet.',
     })
     expect(printSummaryLabels(machine, 52, 'en').modeLine).toBe(
