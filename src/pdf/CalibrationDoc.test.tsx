@@ -5,7 +5,10 @@ import {
   calibrationScaleGaugeY,
   calibrationScaleY,
   cornerLabelBoxes,
-  foldGuideXs,
+  foldGuideLabelBox,
+  fullWidthScaleLabelBox,
+  fullWidthScaleTicks,
+  scaleGaugeLabelBoxes,
   trimRects,
 } from '../lib/calibrationScale.ts'
 import {
@@ -91,6 +94,144 @@ describe('CalibrationDoc', () => {
     expect(componentCount('FullWidthScale')).toBe(2)
   })
 
+  it('renders one aligned line of text inside each fold guide', () => {
+    const paper = PAPER.LETTER
+    const cardSize = CARD_PRESETS.POKER
+    const tree = CalibrationDoc({
+      paper,
+      cardSize,
+      grid: calculateGrid({ paper, card: cardSize }),
+      calibration: { offsetX: 0, offsetY: 0 },
+    })
+    const guides = elementsIn(tree).filter(
+      (element) =>
+        typeof element.type === 'function' && element.type.name === 'FoldGuide',
+    )
+    const guideLabels = guides.flatMap((guide) => {
+      const render = guide.type as (props: {
+        x: number
+        paperWidthPt: number
+        y: number
+        side: 'left' | 'right'
+      }) => ReactNode
+      return elementsIn(
+        render(
+          guide.props as {
+            x: number
+            paperWidthPt: number
+            y: number
+            side: 'left' | 'right'
+          },
+        ),
+      ).filter((element) => element.type === Text)
+    })
+
+    expect(
+      guideLabels.map(
+        (element) =>
+          (element.props as { children?: ReactNode }).children,
+      ),
+    ).toEqual(['Fold here', 'Fold here'])
+    expect(
+      guideLabels.map(
+        (element) =>
+          (element.props as { style: { textAlign: string } }).style.textAlign,
+      ),
+    ).toEqual(['left', 'right'])
+  })
+
+  for (const { paper } of paperCases) {
+    it(`keeps Poker labels and marks inside the ${paper.width} pt page inset`, () => {
+      const cardSize = CARD_PRESETS.POKER
+      const grid = calculateGrid({ paper, card: cardSize })
+      const calibration = { offsetX: 0, offsetY: 0 }
+      const marks = calibrationMarks(grid, paper, calibration)
+      const inset = 14
+      const boxes = [
+        { left: 14, top: 14, width: 70, height: 10 },
+        ...trimRects(grid, cardSize, calibration, 'front'),
+        ...trimRects(grid, cardSize, calibration, 'back'),
+      ]
+
+      for (const side of ['front', 'back'] as const) {
+        for (const mark of marks[side]) {
+          const labels =
+            side === 'front' ? cornerLabelBoxes(mark, paper) : []
+          const extent = mmToPt(side === 'front' ? 5 : 0)
+          const left = Math.min(mark.x - extent, ...labels.map((label) => label.left))
+          const top = Math.min(mark.y - extent, ...labels.map((label) => label.top))
+          const right = Math.max(
+            mark.x + extent,
+            ...labels.map((label) => label.left + label.width),
+          )
+          const bottom = Math.max(
+            mark.y + extent,
+            ...labels.map((label) => label.top + label.height),
+          )
+
+          boxes.push({
+            left,
+            top,
+            width: right - left,
+            height: bottom - top,
+          })
+          boxes.push(...labels)
+        }
+      }
+
+      const scaleY = calibrationScaleY({
+        paper,
+        grid,
+        cardSize,
+        backOffsetY: 0,
+      })
+      const gaugeY = calibrationScaleGaugeY({
+        paper,
+        grid,
+        cardSize,
+        backOffsetY: 0,
+      })
+      expect(scaleY).not.toBeNull()
+      expect(gaugeY).not.toBeNull()
+
+      const lineY = scaleY ?? 0
+      boxes.push(
+        ...fullWidthScaleTicks(paper.width)
+          .filter((tick) => tick.label !== undefined)
+          .map((tick) => fullWidthScaleLabelBox(tick, lineY)),
+        {
+          left: paper.width / 2 - 155,
+          top: Math.max(17, lineY - 13),
+          width: 150,
+          height: 5,
+        },
+        {
+          left: paper.width / 2 + 5,
+          top: Math.max(17, lineY - 13),
+          width: 60,
+          height: 5,
+        },
+      )
+
+      for (const side of ['left', 'right'] as const) {
+        boxes.push(foldGuideLabelBox(paper.width, lineY, side))
+        boxes.push(
+          ...scaleGaugeLabelBoxes(paper.width, side, gaugeY ?? 0),
+        )
+      }
+
+      expect(
+        boxes.every(
+          ({ left, top, width, height }) =>
+            left >= inset &&
+            top >= inset &&
+            left + width <= paper.width - inset &&
+            top + height <= paper.height - inset,
+        ),
+      ).toBe(true)
+    })
+  }
+
   for (const [paperName, paper] of Object.entries(PAPER)) {
     for (const [presetName, cardSize] of Object.entries(CARD_PRESETS)) {
       it(`keeps fold gauges clear of trims, edges, and corner scales for ${presetName} on ${paperName}`, () => {
@@ -114,48 +255,15 @@ describe('CalibrationDoc', () => {
           return
         }
 
-        const foldXs = foldGuideXs(paper.width)
         const centerX = paper.width / 2
         const noteY = Math.max(17, scaleY - 13)
         const marks = calibrationMarks(grid, paper, calibration).front
         const trims = trimRects(grid, cardSize, calibration, 'front')
         const gaugeRects = [
-          {
-            left: foldXs.left - 0.15,
-            top: scaleY - 9,
-            width: 0.3,
-            height: 18,
-          },
-          {
-            left: 1,
-            top: scaleY - 6,
-            width: foldXs.left - 2,
-            height: 12,
-          },
-          {
-            left: foldXs.right - 0.15,
-            top: scaleY - 9,
-            width: 0.3,
-            height: 18,
-          },
-          {
-            left: foldXs.right + 1,
-            top: scaleY - 6,
-            width: paper.width - foldXs.right - 2,
-            height: 12,
-          },
-          {
-            left: foldXs.left - 0.15,
-            top: gaugeY - 5,
-            width: mmToPt(14) + 5.3,
-            height: 16,
-          },
-          {
-            left: foldXs.right - mmToPt(14) - 5.15,
-            top: gaugeY - 5,
-            width: mmToPt(14) + 5.3,
-            height: 16,
-          },
+          foldGuideLabelBox(paper.width, scaleY, 'left'),
+          foldGuideLabelBox(paper.width, scaleY, 'right'),
+          ...scaleGaugeLabelBoxes(paper.width, 'left', gaugeY),
+          ...scaleGaugeLabelBoxes(paper.width, 'right', gaugeY),
           {
             left: centerX - 155,
             top: noteY,

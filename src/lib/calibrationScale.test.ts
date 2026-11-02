@@ -8,9 +8,12 @@ import {
   estimatePrintScaleFromRuler,
   expectedScaleGapSpaces,
   foldGuideXs,
+  foldGuideLabelBox,
   fullWidthScaleTicks,
+  fullWidthScaleLabelBox,
   fullWidthScaleTickLength,
   scaleEstimatesDisagree,
+  scaleGaugeLabelBoxes,
   scaleGaugeTicks,
   scaleBandY,
   SHEET_WIDTH_MM,
@@ -91,6 +94,136 @@ describe('fold guide and gauge geometry', () => {
       )
       expect(leftTicks.filter(({ kind }) => kind === 'mid')).toHaveLength(7)
       expect(leftTicks.filter(({ kind }) => kind === 'minor')).toHaveLength(14)
+    })
+  }
+})
+
+describe('calibration label boxes', () => {
+  const inset = 14
+
+  function intersects(
+    first: { left: number; top: number; width: number; height: number },
+    second: { left: number; top: number; width: number; height: number },
+  ): boolean {
+    return (
+      first.left < second.left + second.width &&
+      first.left + first.width > second.left &&
+      first.top < second.top + second.height &&
+      first.top + first.height > second.top
+    )
+  }
+
+  for (const [paperName, paper] of Object.entries(PAPER)) {
+    it(`keeps gauge labels separate from each other and their ticks on ${paperName}`, () => {
+      for (const side of ['left', 'right'] as const) {
+        const gaugeY = 50
+        const labels = scaleGaugeLabelBoxes(paper.width, side, gaugeY)
+        const ticks = scaleGaugeTicks(paper.width, side)
+
+        expect(labels.map(({ text }) => text)).toEqual([
+          '0',
+          '2',
+          '4',
+          '6',
+          '8',
+          '10',
+          '12',
+          '14',
+        ])
+        for (const label of labels) {
+          expect(label.width).toBeCloseTo(label.text.length * label.fontSize * 0.556)
+        }
+        for (let first = 0; first < labels.length; first += 1) {
+          const label = labels[first]!
+          expect(label.left).toBeGreaterThanOrEqual(inset)
+          expect(label.left + label.width).toBeLessThanOrEqual(paper.width - inset)
+          for (let second = first + 1; second < labels.length; second += 1) {
+            expect(intersects(label, labels[second]!)).toBe(false)
+          }
+          for (const tick of ticks) {
+            const length =
+              tick.kind === 'major' ? 8 : tick.kind === 'mid' ? 5 : 3
+            expect(
+              intersects(label, {
+                left: tick.xPt - 0.15,
+                top: gaugeY - length / 2,
+                width: 0.3,
+                height: length,
+              }),
+            ).toBe(false)
+          }
+        }
+      }
+    })
+
+    it(`keeps fold captions inside the guides and clear of scale marks on ${paperName}`, () => {
+      const y = 30
+      const sides = ['left', 'right'] as const
+      const captions = sides.map((side) =>
+        foldGuideLabelBox(paper.width, y, side),
+      )
+      const foldXs = foldGuideXs(paper.width)
+      const ticks = fullWidthScaleTicks(paper.width)
+      const scaleLabels = ticks
+        .filter((tick) => tick.label !== undefined)
+        .map((tick) => fullWidthScaleLabelBox(tick, y))
+
+      expect(captions.map(({ textAlign }) => textAlign)).toEqual(['left', 'right'])
+      for (const [index, side] of sides.entries()) {
+        const caption = captions[index]!
+        const foldX = foldXs[side]
+        const distanceFromGuide =
+          side === 'left'
+            ? caption.left - foldX
+            : foldX - caption.left - caption.width
+
+        expect(caption.left).toBeGreaterThanOrEqual(inset)
+        expect(caption.left + caption.width).toBeLessThanOrEqual(
+          paper.width - inset,
+        )
+        expect(distanceFromGuide).toBeGreaterThanOrEqual(3)
+        for (const tick of ticks) {
+          const length = fullWidthScaleTickLength(tick)
+          expect(
+            intersects(caption, {
+              left: (tick.xPt ?? 0) - 0.15,
+              top: y - length / 2,
+              width: 0.3,
+              height: length,
+            }),
+          ).toBe(false)
+        }
+        for (const label of scaleLabels) {
+          expect(intersects(caption, label)).toBe(false)
+        }
+      }
+
+      const noteY = Math.max(17, y - 13)
+      const noteBoxes = [
+        { left: paper.width / 2 - 155, top: noteY, width: 150, height: 5 },
+        { left: paper.width / 2 + 5, top: noteY, width: 60, height: 5 },
+      ]
+      expect(
+        captions.some((caption) =>
+          noteBoxes.some((note) => intersects(caption, note)),
+        ),
+      ).toBe(false)
+    })
+
+    it(`keeps every full-width scale label inside the ${paperName} inset`, () => {
+      const boxes = fullWidthScaleTicks(paper.width)
+        .filter((tick) => tick.label !== undefined)
+        .map((tick) => fullWidthScaleLabelBox(tick, 30))
+
+      expect(
+        boxes.every(
+          ({ left, top, width, height }) =>
+            left >= inset &&
+            top >= inset &&
+            left + width <= paper.width - inset &&
+            top + height <= paper.height - inset,
+        ),
+      ).toBe(true)
     })
   }
 })

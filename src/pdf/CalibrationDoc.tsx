@@ -11,11 +11,14 @@ import {
   calibrationScaleGaugeY,
   trimRects,
   cornerLabelBoxes,
+  foldGuideLabelBox,
+  fullWidthScaleLabelBox,
   calibrationScaleY,
   cornerScaleTicks,
   foldGuideXs,
   fullWidthScaleTicks,
   fullWidthScaleTickLength,
+  scaleGaugeLabelBoxes,
   scaleGaugeTicks,
   type ScaleTick,
 } from '../lib/calibrationScale.ts'
@@ -137,11 +140,7 @@ function FullWidthScale({
                 key={`full-label-${tick.mm}`}
                 style={{
                   position: 'absolute',
-                  left: (tick.xPt ?? 0) - 13,
-                  top: y + (Math.abs(tick.mm) === 100 ? 8 : 5),
-                  width: 26,
-                  height: 6,
-                  fontSize: Math.abs(tick.mm) === 100 ? 5 : 6,
+                  ...fullWidthScaleLabelBox(tick, y),
                   textAlign: 'center',
                   color: '#000000',
                 }}
@@ -165,6 +164,8 @@ function FoldGuide({
   y: number
   side: 'left' | 'right'
 }) {
+  const label = foldGuideLabelBox(paperWidthPt, y, side)
+
   return (
     <>
       {Array.from({ length: 5 }, (_, index) => (
@@ -183,17 +184,12 @@ function FoldGuide({
       <Text
         style={{
           position: 'absolute',
-          left: side === 'left' ? 1 : x + 1,
-          top: y - 6,
-          width: side === 'left' ? x - 2 : paperWidthPt - x - 2,
-          height: 12,
-          fontSize: 5,
-          lineHeight: 5,
-          textAlign: side === 'left' ? 'right' : 'left',
+          ...label,
+          lineHeight: label.height,
           color: '#000000',
         }}
       >
-        {'Fold\nhere'}
+        Fold here
       </Text>
     </>
   )
@@ -208,9 +204,12 @@ function ScaleGauge({
   y: number
   side: 'left' | 'right'
 }) {
+  const ticks = scaleGaugeTicks(paperWidthPt, side)
+  const labels = scaleGaugeLabelBoxes(paperWidthPt, side, y)
+
   return (
     <>
-      {scaleGaugeTicks(paperWidthPt, side).map((tick) => {
+      {ticks.map((tick) => {
         const length = tick.kind === 'major' ? 8 : tick.kind === 'mid' ? 5 : 3
 
         return (
@@ -225,25 +224,26 @@ function ScaleGauge({
                 backgroundColor: '#000000',
               }}
             />
-            {tick.label !== undefined && (
-              <Text
-                style={{
-                  position: 'absolute',
-                  left: tick.xPt - 5,
-                  top: y + 5,
-                  width: 10,
-                  height: 6,
-                  fontSize: 5,
-                  textAlign: 'center',
-                  color: '#000000',
-                }}
-              >
-                {tick.label}
-              </Text>
-            )}
           </Fragment>
         )
       })}
+      {labels.map((label) => (
+        <Text
+          key={`gauge-label-${side}-${label.mm}`}
+          style={{
+            position: 'absolute',
+            left: label.left,
+            top: label.top,
+            width: label.width,
+            height: label.height,
+            fontSize: label.fontSize,
+            textAlign: side === 'left' ? 'left' : 'right',
+            color: '#000000',
+          }}
+        >
+          {label.text}
+        </Text>
+      ))}
     </>
   )
 }
@@ -504,8 +504,8 @@ export default function CalibrationDoc({
             <View
               style={{
                 position: 'absolute',
-                left: 10,
-                top: 8,
+                left: 14,
+                top: 14,
                 flexDirection: 'row',
                 alignItems: 'center',
               }}
