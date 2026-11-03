@@ -155,45 +155,64 @@ function FullWidthScale({
 
 function FoldGuide({
   x,
-  paperWidthPt,
+  paper,
+  grid,
+  cardSize,
+  calibration,
   y,
+  gaugeY,
   side,
 }: {
   x: number
-  paperWidthPt: number
+  paper: Size
+  grid: Grid
+  cardSize: Size
+  calibration: Calibration
   y: number
+  gaugeY: number
   side: 'left' | 'right'
 }) {
-  const label = foldGuideLabelBox(paperWidthPt, y, side)
+  const label = foldGuideLabelBox({
+    paper,
+    grid,
+    cardSize,
+    calibration,
+    scaleY: y,
+    gaugeY,
+    side,
+  })
+  const endTickLength = fullWidthScaleTickLength({
+    mm: side === 'left' ? -100 : 100,
+    kind: 'major',
+    xPt: x,
+  })
+  const lineTop = y - endTickLength / 2
 
   return (
     <>
-      {Array.from({ length: 5 }, (_, index) => (
-        <View
-          key={`fold-dash-${side}-${index}`}
-          style={{
-            position: 'absolute',
-            left: x - 0.15,
-            top: y - 2 + index * 4,
-            width: 0.3,
-            height: 2.5,
-            backgroundColor: '#000000',
-          }}
-        />
-      ))}
+      <View
+        style={{
+          position: 'absolute',
+          left: x - 0.25,
+          top: lineTop,
+          width: 0.5,
+          height: paper.height - lineTop,
+          backgroundColor: '#000000',
+        }}
+      />
       <Text
         style={{
           position: 'absolute',
           left: label.left,
           top: label.top,
           width: label.width,
+          height: label.height,
           fontSize: label.fontSize,
-          lineHeight: label.height,
           textAlign: label.textAlign,
           color: '#000000',
         }}
       >
-        Fold here
+        Fold edge of page to this line and crease along line.
       </Text>
     </>
   )
@@ -300,20 +319,46 @@ function CornerScale({
 }) {
   const ticks = cornerScaleTicks()
   const halfLength = mmToPt(5)
+  const foldXs = foldGuideXs(paper.width)
+  const foldLines = [foldXs.left, foldXs.right].filter(
+    (x) => x > mark.x - halfLength && x < mark.x + halfLength,
+  )
   const labels = cornerLabelBoxes(mark, paper)
+  const baselineSegments = foldLines.reduce(
+    (segments, foldX) => {
+      const current = segments.pop()!
+      if (foldX - 0.25 > current.left) {
+        segments.push({
+          left: current.left,
+          width: foldX - 0.25 - current.left,
+        })
+      }
+      if (current.left + current.width > foldX + 0.25) {
+        segments.push({
+          left: foldX + 0.25,
+          width: current.left + current.width - (foldX + 0.25),
+        })
+      }
+      return segments
+    },
+    [{ left: mark.x - halfLength, width: halfLength * 2 }],
+  )
 
   return (
     <>
-      <View
-        style={{
-          position: 'absolute',
-          left: mark.x - halfLength,
-          top: mark.y - 0.125,
-          width: halfLength * 2,
-          height: 0.25,
-          backgroundColor: '#000000',
-        }}
-      />
+      {baselineSegments.map((segment, index) => (
+        <View
+          key={`corner-scale-baseline-${mark.x}-${mark.y}-${index}`}
+          style={{
+            position: 'absolute',
+            left: segment.left,
+            top: mark.y - 0.125,
+            width: segment.width,
+            height: 0.25,
+            backgroundColor: '#000000',
+          }}
+        />
+      ))}
       <View
         style={{
           position: 'absolute',
@@ -328,29 +373,42 @@ function CornerScale({
         const offsetPt = tick.offsetPt ?? 0
         const length =
           tick.mm === 0 ? 6 : tick.kind === 'mid' ? 4 : 2
+        const tickX = mark.x + offsetPt
+        const verticalCrossesFoldLine = [foldXs.left, foldXs.right].some(
+          (foldX) => Math.abs(foldX - tickX) < 0.375,
+        )
+        const horizontalCrossesFoldLine = [foldXs.left, foldXs.right].some(
+          (foldX) =>
+            foldX > mark.x - length / 2 - 0.25 &&
+            foldX < mark.x + length / 2 + 0.25,
+        )
 
         return (
           <Fragment key={`corner-tick-${mark.x}-${mark.y}-${tick.mm}`}>
-            <View
-              style={{
-                position: 'absolute',
-                left: mark.x + offsetPt - 0.125,
-                top: mark.y - length / 2,
-                width: 0.25,
-                height: length,
-                backgroundColor: '#000000',
-              }}
-            />
-            <View
-              style={{
-                position: 'absolute',
-                left: mark.x - length / 2,
-                top: mark.y + offsetPt - 0.125,
-                width: length,
-                height: 0.25,
-                backgroundColor: '#000000',
-              }}
-            />
+            {!verticalCrossesFoldLine && (
+              <View
+                style={{
+                  position: 'absolute',
+                  left: tickX - 0.125,
+                  top: mark.y - length / 2,
+                  width: 0.25,
+                  height: length,
+                  backgroundColor: '#000000',
+                }}
+              />
+            )}
+            {!horizontalCrossesFoldLine && (
+              <View
+                style={{
+                  position: 'absolute',
+                  left: mark.x - length / 2,
+                  top: mark.y + offsetPt - 0.125,
+                  width: length,
+                  height: 0.25,
+                  backgroundColor: '#000000',
+                }}
+              />
+            )}
           </Fragment>
         )
       })}
@@ -477,14 +535,22 @@ export default function CalibrationDoc({
               <>
                 <FoldGuide
                   x={foldXs.left}
-                  paperWidthPt={paper.width}
+                  paper={paper}
+                  grid={grid}
+                  cardSize={cardSize}
+                  calibration={calibration}
                   y={scaleY}
+                  gaugeY={gaugeY}
                   side="left"
                 />
                 <FoldGuide
                   x={foldXs.right}
-                  paperWidthPt={paper.width}
+                  paper={paper}
+                  grid={grid}
+                  cardSize={cardSize}
+                  calibration={calibration}
                   y={scaleY}
+                  gaugeY={gaugeY}
                   side="right"
                 />
                 <ScaleGauge paperWidthPt={paper.width} y={gaugeY} side="left" />
