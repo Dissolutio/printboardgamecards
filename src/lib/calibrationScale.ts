@@ -5,6 +5,7 @@ import {
   type Point,
   type Size,
 } from './geometry.ts'
+import { calibrationMarks, type CalibrationMark } from './calibration.ts'
 import type { Calibration, Grid } from './layout.ts'
 
 export const SHEET_WIDTH_MM = {
@@ -35,6 +36,7 @@ export type CalibrationLabelBox = {
 
 export type FoldGuideLabelBox = CalibrationLabelBox & {
   textAlign: 'left' | 'right'
+  lineCount: number
 }
 
 export type CornerLabelBox = {
@@ -103,7 +105,16 @@ export function cornerLabelBoxes(
     const width = text.length * SCALE_LABEL_DIGIT_WIDTH
     const desiredLeft =
       mark.x + direction * labelOffset - width / 2
-    const left = Math.max(14, Math.min(paper.width - 14 - width, desiredLeft))
+    const foldXs = foldGuideXs(paper.width)
+    const overlapsFoldLine = [foldXs.left, foldXs.right].some(
+      (x) => desiredLeft < x + 0.25 && desiredLeft + width > x - 0.25,
+    )
+    const adjustedLeft = overlapsFoldLine
+      ? mark.x < paper.width / 2
+        ? mark.x + 2
+        : mark.x - width - 2
+      : desiredLeft
+    const left = Math.max(14, Math.min(paper.width - 14 - width, adjustedLeft))
 
     return {
       axis: 'horizontal',
@@ -187,23 +198,203 @@ export function foldGuideXs(paperWidthPt: number): { left: number; right: number
   }
 }
 
-export function foldGuideLabelBox(
-  paperWidthPt: number,
-  y: number,
-  side: 'left' | 'right',
-): FoldGuideLabelBox {
-  const x = foldGuideXs(paperWidthPt)[side]
-  const width = 36
-  const labelOffset = 45
+const FOLD_GUIDE_INSTRUCTION =
+  'Fold edge of page to this line and crease along line.'
+const FOLD_GUIDE_FONT_SIZE = 7
+const FOLD_GUIDE_LINE_HEIGHT = FOLD_GUIDE_FONT_SIZE * 1.5
+const FOLD_GUIDE_GAP = 0.5
+const FOLD_GUIDE_MAX_WIDTH = 150
 
-  return {
-    left: side === 'left' ? x + labelOffset : x - labelOffset - width,
-    top: Math.max(17, y - 22),
-    width,
-    height: 8,
-    fontSize: 5,
-    textAlign: side === 'left' ? 'left' : 'right',
+type CalibrationBox = Pick<CalibrationLabelBox, 'left' | 'top' | 'width' | 'height'>
+
+function boxIntersects(first: CalibrationBox, second: CalibrationBox): boolean {
+  return (
+    first.left < second.left + second.width &&
+    first.left + first.width > second.left &&
+    first.top < second.top + second.height &&
+    first.top + first.height > second.top
+  )
+}
+
+function cornerScaleBounds(mark: CalibrationMark, paper: Size): CalibrationBox {
+  const radius = mmToPt(5)
+  const labels = cornerLabelBoxes(mark, paper)
+  const left = Math.min(mark.x - radius, ...labels.map(({ left }) => left))
+  const top = Math.min(mark.y - radius, ...labels.map(({ top }) => top))
+  const right = Math.max(
+    mark.x + radius,
+    ...labels.map(({ left, width }) => left + width),
+  )
+  const bottom = Math.max(
+    mark.y + radius,
+    ...labels.map(({ top, height }) => top + height),
+  )
+
+  return { left, top, width: right - left, height: bottom - top }
+}
+
+function foldGuideObstacles({
+  paper,
+  grid,
+  cardSize,
+  calibration,
+  scaleY,
+  gaugeY,
+}: {
+  paper: Size
+  grid: Grid
+  cardSize: Size
+  calibration: Calibration
+  scaleY: number
+  gaugeY: number
+}): CalibrationBox[] {
+  const marks = calibrationMarks(grid, paper, calibration).front
+  const scaleTicks = fullWidthScaleTicks(paper.width)
+  const gaugeLabels = (['left', 'right'] as const).flatMap((side) =>
+    scaleGaugeLabelBoxes(paper.width, side, gaugeY)
+      .filter(({ mm }) => mm !== 0)
+      .map(({ left, top, width, height }) => ({ left, top, width, height })),
+  )
+  const noteY = Math.max(17, scaleY - 13)
+
+  return [
+    ...trimRects(grid, cardSize, calibration, 'front'),
+    ...marks.map((mark) => cornerScaleBounds(mark, paper)),
+    { left: 14, top: 14, width: 40, height: 10 },
+    ...scaleTicks
+      .filter((tick) => tick.label !== undefined)
+      .map((tick) => fullWidthScaleLabelBox(tick, scaleY)),
+    ...scaleTicks.map((tick) => ({
+      left: (tick.xPt ?? 0) - 0.15,
+      top: scaleY - fullWidthScaleTickLength(tick) / 2,
+      width: 0.3,
+      height: fullWidthScaleTickLength(tick),
+    })),
+    { left: paper.width / 2 - 155, top: noteY, width: 150, height: 8 },
+    { left: paper.width / 2 + 5, top: noteY, width: 60, height: 8 },
+    ...gaugeLabels,
+  ]
+}
+
+function estimateFoldGuideLines(width: number): number {
+  const averageCharacterWidth = FOLD_GUIDE_FONT_SIZE * 0.556
+  const charactersPerLine = Math.max(1, Math.floor(width / averageCharacterWidth))
+  return Math.ceil(FOLD_GUIDE_INSTRUCTION.length / charactersPerLine) + 2
+}
+
+function foldGuideBoxAtCenter(
+  centerY: number,
+  initialWidth: number,
+  startX: number,
+  side: 'left' | 'right',
+  obstacles: CalibrationBox[],
+): FoldGuideLabelBox | null {
+  let width = initialWidth
+
+  for (let attempt = 0; attempt < obstacles.length + 1; attempt += 1) {
+    const lineCount = estimateFoldGuideLines(width)
+    const height = lineCount * FOLD_GUIDE_LINE_HEIGHT
+    const left =
+      side === 'left' ? startX : startX - width
+    const box = {
+      left,
+      top: centerY - height / 2,
+      width,
+      height,
+    }
+    let nextWidth = width
+
+    for (const obstacle of obstacles) {
+      if (!boxIntersects(box, obstacle)) continue
+
+      if (side === 'left') {
+        if (obstacle.left < startX) return null
+        nextWidth = Math.min(nextWidth, obstacle.left - startX - FOLD_GUIDE_GAP)
+      } else {
+        if (obstacle.left < startX && obstacle.left + obstacle.width > startX) {
+          return null
+        }
+        nextWidth = Math.min(
+          nextWidth,
+          startX - (obstacle.left + obstacle.width) - FOLD_GUIDE_GAP,
+        )
+      }
+    }
+
+    if (nextWidth < 10) return null
+    if (nextWidth === width) {
+      return {
+        ...box,
+        fontSize: FOLD_GUIDE_FONT_SIZE,
+        textAlign: side === 'left' ? 'left' : 'right',
+        lineCount,
+      }
+    }
+    width = nextWidth
   }
+
+  return null
+}
+
+export function foldGuideLabelBox({
+  paper,
+  grid,
+  cardSize,
+  calibration,
+  scaleY,
+  gaugeY,
+  side,
+}: {
+  paper: Size
+  grid: Grid
+  cardSize: Size
+  calibration: Calibration
+  scaleY: number
+  gaugeY: number
+  side: 'left' | 'right'
+}): FoldGuideLabelBox {
+  const foldX = foldGuideXs(paper.width)[side]
+  const startX =
+    side === 'left' ? foldX + FOLD_GUIDE_GAP : foldX - FOLD_GUIDE_GAP
+  const pageInset = 14
+  const maxWidth = Math.min(
+    FOLD_GUIDE_MAX_WIDTH,
+    side === 'left'
+      ? paper.width - pageInset - startX
+      : startX - pageInset,
+  )
+  const obstacles = foldGuideObstacles({
+    paper,
+    grid,
+    cardSize,
+    calibration,
+    scaleY,
+    gaugeY,
+  })
+  const middleY = paper.height / 2
+
+  for (let distance = 0; distance <= paper.height; distance += 1) {
+    for (const centerY of distance === 0
+      ? [middleY]
+      : [middleY - distance, middleY + distance]) {
+      const box = foldGuideBoxAtCenter(
+        centerY,
+        maxWidth,
+        startX,
+        side,
+        obstacles,
+      )
+      if (
+        box &&
+        box.top >= pageInset &&
+        box.top + box.height <= paper.height - pageInset
+      ) {
+        return box
+      }
+    }
+  }
+
+  throw new RangeError('No clear space is available for the fold instruction.')
 }
 
 export type ScaleGaugeTick = {
@@ -228,7 +419,7 @@ export function scaleGaugeTicks(
       mm,
       xPt: roundThousandth(foldX + (side === 'left' ? 1 : -1) * mmToPt(mm)),
       kind,
-      ...(kind === 'major' ? { label: String(mm) } : {}),
+      ...(kind === 'major' && mm !== 0 ? { label: String(mm) } : {}),
     }
   })
 }

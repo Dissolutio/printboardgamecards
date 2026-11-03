@@ -9,6 +9,7 @@ import {
   foldGuideLabelBox,
   fullWidthScaleLabelBox,
   fullWidthScaleTicks,
+  foldGuideXs,
   scaleGaugeLabelBoxes,
   scaleGaugeTicks,
   trimRects,
@@ -18,14 +19,27 @@ import {
   CARD_PRESETS,
   mmToPt,
   PAPER,
+  type Size,
 } from '../lib/geometry.ts'
 import { calibrationMarks } from '../lib/calibration.ts'
+import type { Calibration, Grid } from '../lib/layout.ts'
 import CalibrationDoc from './CalibrationDoc.tsx'
 
 const paperCases = [
   { paper: PAPER.LETTER, expectedBox: [0, 0, 612, 792] },
   { paper: PAPER.A4, expectedBox: [0, 0, 595, 842] },
 ]
+
+type FoldGuideProps = {
+  x: number
+  paper: Size
+  grid: Grid
+  cardSize: Size
+  calibration: Calibration
+  y: number
+  gaugeY: number
+  side: 'left' | 'right'
+}
 
 function pageMediaBoxes(pdfBytes: Uint8Array): number[][] {
   const pdfText = new TextDecoder('latin1').decode(pdfBytes)
@@ -118,6 +132,39 @@ function intersects(
   )
 }
 
+function foldLabelBox(
+  paper: (typeof PAPER)[keyof typeof PAPER],
+  cardSize: (typeof CARD_PRESETS)[keyof typeof CARD_PRESETS],
+  side: 'left' | 'right',
+  calibration = { offsetX: 0, offsetY: 0 },
+) {
+  const grid = calculateGrid({ paper, card: cardSize })
+  const scaleY =
+    calibrationScaleY({
+      paper,
+      grid,
+      cardSize,
+      backOffsetY: calibration.offsetY,
+    }) ?? 30
+  const gaugeY =
+    calibrationScaleGaugeY({
+      paper,
+      grid,
+      cardSize,
+      backOffsetY: calibration.offsetY,
+    }) ?? 50
+
+  return foldGuideLabelBox({
+    paper,
+    grid,
+    cardSize,
+    calibration,
+    scaleY,
+    gaugeY,
+    side,
+  })
+}
+
 describe('CalibrationDoc', () => {
   it('renders a vector arrow beside both page labels', () => {
     const paper = PAPER.LETTER
@@ -160,7 +207,7 @@ describe('CalibrationDoc', () => {
     expect(componentCount('FullWidthScale')).toBe(2)
   })
 
-  it('renders one aligned line of text inside each fold guide', () => {
+  it('renders the instruction inside each fold guide with inward alignment', () => {
     const paper = PAPER.LETTER
     const cardSize = CARD_PRESETS.POKER
     const tree = CalibrationDoc({
@@ -174,30 +221,21 @@ describe('CalibrationDoc', () => {
         typeof element.type === 'function' && element.type.name === 'FoldGuide',
     )
     const guideLabels = guides.flatMap((guide) => {
-      const render = guide.type as (props: {
-        x: number
-        paperWidthPt: number
-        y: number
-        side: 'left' | 'right'
-      }) => ReactNode
+      const render = guide.type as (props: FoldGuideProps) => ReactNode
       return elementsIn(
-        render(
-          guide.props as {
-            x: number
-            paperWidthPt: number
-            y: number
-            side: 'left' | 'right'
-          },
-        ),
+        render(guide.props as FoldGuideProps),
       ).filter((element) => element.type === Text)
     })
 
+    expect(guideLabels).toHaveLength(2)
     expect(
       guideLabels.map(
-        (element) =>
-          (element.props as { children?: ReactNode }).children,
+        (element) => (element.props as { children?: ReactNode }).children,
       ),
-    ).toEqual(['Fold here', 'Fold here'])
+    ).toEqual([
+      'Fold edge of page to this line and crease along line.',
+      'Fold edge of page to this line and crease along line.',
+    ])
     expect(
       guideLabels.map(
         (element) =>
@@ -233,7 +271,7 @@ describe('CalibrationDoc', () => {
       }
     })
 
-    it(`keeps fold dashes clear of the page heading on ${paper.width} pt paper`, () => {
+    it(`starts each solid fold line below the heading and ends at the page bottom on ${paper.width} pt paper`, () => {
       const cardSize = CARD_PRESETS.POKER
       const tree = CalibrationDoc({
         paper,
@@ -247,26 +285,25 @@ describe('CalibrationDoc', () => {
       )
 
       for (const guide of guides) {
-        const render = guide.type as (props: {
-          x: number
-          paperWidthPt: number
-          y: number
-          side: 'left' | 'right'
-        }) => ReactNode
-        const props = guide.props as {
-          x: number
-          paperWidthPt: number
-          y: number
-          side: 'left' | 'right'
-        }
-        const dashTops = elementsIn(render(props))
+        const render = guide.type as (props: FoldGuideProps) => ReactNode
+        const props = guide.props as FoldGuideProps
+        const lines = elementsIn(render(props))
           .filter((element) => element.type === View)
-          .map(
-            (element) =>
-              (element.props as { style: { top: number } }).style.top,
-          )
+        const line = (lines[0]!.props as {
+          style: { left: number; top: number; width: number; height: number }
+        }).style
+        const y = calibrationScaleY({
+          paper,
+          grid: calculateGrid({ paper, card: cardSize }),
+          cardSize,
+          backOffsetY: 0,
+        })!
 
-        expect(Math.min(...dashTops) - 24).toBeGreaterThanOrEqual(3)
+        expect(lines).toHaveLength(1)
+        expect(line.width).toBe(0.5)
+        expect(line.top).toBe(y - 7)
+        expect(line.height).toBe(paper.height - line.top)
+        expect(line.top).toBeGreaterThanOrEqual(23)
       }
 
       expect(guides).toHaveLength(2)
@@ -395,7 +432,7 @@ describe('CalibrationDoc', () => {
       )
 
       for (const side of ['left', 'right'] as const) {
-        boxes.push(foldGuideLabelBox(paper.width, lineY, side))
+        boxes.push(foldLabelBox(paper, cardSize, side))
         const gaugeLabels = scaleGaugeLabelBoxes(
           paper.width,
           side,
@@ -565,8 +602,8 @@ describe('CalibrationDoc', () => {
         const marks = calibrationMarks(grid, paper, calibration).front
         const trims = trimRects(grid, cardSize, calibration, 'front')
         const gaugeRects = [
-          foldGuideLabelBox(paper.width, scaleY, 'left'),
-          foldGuideLabelBox(paper.width, scaleY, 'right'),
+          foldLabelBox(paper, cardSize, 'left'),
+          foldLabelBox(paper, cardSize, 'right'),
           ...scaleGaugeLabelBoxes(paper.width, 'left', gaugeY),
           ...scaleGaugeLabelBoxes(paper.width, 'right', gaugeY),
           {
@@ -620,6 +657,182 @@ describe('CalibrationDoc', () => {
     }
   }
 
+  for (const { paper } of paperCases) {
+    for (const [presetName, cardSize] of Object.entries(CARD_PRESETS)) {
+      it(`keeps fold lines and instructions clear for ${presetName} on ${paper.width} pt paper`, () => {
+        const calibration = { offsetX: 0, offsetY: 0 }
+        const grid = calculateGrid({ paper, card: cardSize })
+        const scaleY = calibrationScaleY({
+          paper,
+          grid,
+          cardSize,
+          backOffsetY: 0,
+        })
+        const gaugeY = calibrationScaleGaugeY({
+          paper,
+          grid,
+          cardSize,
+          backOffsetY: 0,
+        })
+        const tree = CalibrationDoc({
+          paper,
+          cardSize,
+          grid,
+          calibration,
+        })
+        const guides = elementsIn(tree).filter(
+          (element) =>
+            typeof element.type === 'function' &&
+            element.type.name === 'FoldGuide',
+        )
+
+        if (scaleY === null || gaugeY === null) {
+          expect(guides).toHaveLength(0)
+          return
+        }
+
+        expect(guides).toHaveLength(2)
+        const trims = trimRects(grid, cardSize, calibration, 'front')
+        const marks = calibrationMarks(grid, paper, calibration).front
+        const cornerBounds = marks.map((mark) => {
+          const radius = mmToPt(5)
+          const labels = cornerLabelBoxes(mark, paper)
+          const left = Math.min(mark.x - radius, ...labels.map(({ left }) => left))
+          const top = Math.min(mark.y - radius, ...labels.map(({ top }) => top))
+          const right = Math.max(
+            mark.x + radius,
+            ...labels.map(({ left, width }) => left + width),
+          )
+          const bottom = Math.max(
+            mark.y + radius,
+            ...labels.map(({ top, height }) => top + height),
+          )
+          return { left, top, width: right - left, height: bottom - top }
+        })
+        const noteY = Math.max(17, scaleY - 13)
+        const notes = [
+          { left: paper.width / 2 - 155, top: noteY, width: 150, height: 8 },
+          { left: paper.width / 2 + 5, top: noteY, width: 60, height: 8 },
+        ]
+        const heading = { left: 14, top: 14, width: 40, height: 9 }
+
+        for (const side of ['left', 'right'] as const) {
+          const guide = guides.find(
+            (element) =>
+              (element.props as FoldGuideProps).side === side,
+          )!
+          const render = guide.type as (props: FoldGuideProps) => ReactNode
+          const props = guide.props as FoldGuideProps
+          const [lineElement] = elementsIn(render(props)).filter(
+            (element) => element.type === View,
+          )
+          const line = (lineElement!.props as {
+            style: { left: number; top: number; width: number; height: number }
+          }).style
+          const label = foldGuideLabelBox({
+            paper,
+            grid,
+            cardSize,
+            calibration,
+            scaleY,
+            gaugeY,
+            side,
+          })
+          const foldX = foldGuideXs(paper.width)[side]
+          const lineBox = {
+            left: line.left,
+            top: line.top,
+            width: line.width,
+            height: line.height,
+          }
+          const gaugeLabels = (['left', 'right'] as const).flatMap((gaugeSide) =>
+            scaleGaugeLabelBoxes(paper.width, gaugeSide, gaugeY),
+          )
+
+          expect(lineBox).toEqual({
+            left: foldX - 0.25,
+            top: scaleY - 7,
+            width: 0.5,
+            height: paper.height - (scaleY - 7),
+          })
+          expect(trims.some((trim) => intersects(lineBox, trim))).toBe(false)
+          const cornerScales = elementsIn(tree).filter(
+            (element) =>
+              typeof element.type === 'function' &&
+              element.type.name === 'CornerScale',
+          )
+          const cornerScaleElements = cornerScales.flatMap((cornerScale) => {
+            const render = cornerScale.type as (props: {
+              mark: (typeof marks)[number]
+              paper: Size
+            }) => ReactNode
+            return elementsIn(
+              render(cornerScale.props as {
+                mark: (typeof marks)[number]
+                paper: Size
+              }),
+            )
+          })
+          const cornerScaleViews = cornerScaleElements
+            .filter((element) => element.type === View)
+            .map((element) => {
+              const style = (element.props as {
+                style: { left: number; top: number; width: number; height: number }
+              }).style
+              return style
+            })
+          expect(
+            cornerScaleViews.some((box) => intersects(lineBox, box)),
+          ).toBe(false)
+          expect(
+            marks.some((mark) =>
+              intersects(lineBox, {
+                left: mark.x - 3,
+                top: mark.y - 3,
+                width: 6,
+                height: 6,
+              }),
+            ),
+          ).toBe(false)
+          expect(
+            marks
+              .flatMap((mark) => cornerLabelBoxes(mark, paper))
+              .some((cornerLabel) => intersects(lineBox, cornerLabel)),
+          ).toBe(false)
+          expect(intersects(lineBox, heading)).toBe(false)
+          expect(notes.some((note) => intersects(lineBox, note))).toBe(false)
+          expect(
+            gaugeLabels.some((gaugeLabel) => intersects(lineBox, gaugeLabel)),
+          ).toBe(false)
+
+          expect(label.fontSize).toBeGreaterThanOrEqual(7)
+          expect(label.height).toBeGreaterThanOrEqual(
+            1.4 * label.fontSize * label.lineCount,
+          )
+          expect(label.left).toBeGreaterThanOrEqual(14)
+          expect(label.top).toBeGreaterThanOrEqual(14)
+          expect(label.left + label.width).toBeLessThanOrEqual(paper.width - 14)
+          expect(label.top + label.height).toBeLessThanOrEqual(
+            paper.height - 14,
+          )
+          expect(intersects(label, lineBox)).toBe(false)
+          expect(trims.some((trim) => intersects(label, trim))).toBe(false)
+          expect(cornerBounds.some((box) => intersects(label, box))).toBe(false)
+          expect(intersects(label, heading)).toBe(false)
+          expect(notes.some((note) => intersects(label, note))).toBe(false)
+          expect(
+            gaugeLabels.some((gaugeLabel) => intersects(label, gaugeLabel)),
+          ).toBe(false)
+          expect(
+            label.textAlign === 'left'
+              ? label.left - foldX
+              : foldX - label.left - label.width,
+          ).toBeGreaterThanOrEqual(0.5)
+        }
+      })
+    }
+  }
+
   for (const { paper, expectedBox } of paperCases) {
     it(`renders two pages at ${paper.width}×${paper.height} pt`, async () => {
       const cardSize = CARD_PRESETS.POKER
@@ -637,7 +850,7 @@ describe('CalibrationDoc', () => {
     })
   }
 
-  it('renders fold and dimension labels as extractable Letter Poker PDF text', async () => {
+  it('renders front-only fold instructions and dimension labels as extractable PDF text', async () => {
     const paper = PAPER.LETTER
     const cardSize = CARD_PRESETS.POKER
     const pdfBytes = await renderToBuffer(
@@ -648,15 +861,25 @@ describe('CalibrationDoc', () => {
         calibration={{ offsetX: 0, offsetY: 0 }}
       />,
     )
-    const pageContent = extractPdfText(
-      (await inflatePdfStreams(pdfBytes)).join('\n'),
-    )
+    const textStreams = (await inflatePdfStreams(pdfBytes)).map(extractPdfText)
+    const frontText = textStreams.find((content) => content.includes('FRONT'))
+    const backText = textStreams.find((content) => content.includes('BACK'))
+    const instruction =
+      'Fold edge of page to this line and crease along line.'
 
-    expect(pageContent).toContain('Fold')
-    expect(pageContent).toContain('200 mm')
-    expect(pageContent).toContain('7.87')
-    expect(pageContent).toContain('-5')
-    expect(pageContent).toContain('5')
+    expect(frontText).toBeDefined()
+    expect(backText).toBeDefined()
+    const compactFrontText = frontText?.replace(/\s+/g, '')
+    const compactInstruction = instruction.replace(/\s+/g, '')
+    expect(compactFrontText).toContain(compactInstruction)
+    expect(compactFrontText?.split(compactInstruction)).toHaveLength(3)
+    expect(frontText).not.toContain('Fold here')
+    expect(frontText).toContain('200 mm')
+    expect(frontText).toContain('7.87')
+    expect(frontText).toContain('-5')
+    expect(frontText).toContain('5')
+    expect(backText).not.toContain(instruction)
+    expect(backText).not.toContain('Fold here')
   })
 
   for (const { paper } of paperCases) {

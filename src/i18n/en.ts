@@ -36,9 +36,9 @@ export const en: Catalog = {
     'Check that your printer printed at 100 percent. Use either method.',
   'calibration.scale.fold.heading': 'Method A: Fold the paper',
   'calibration.scale.fold.step1':
-    'Find the two dashed fold lines at the ends of the long scale on the front page.',
+    'Find the two long vertical lines at the left and right ends of the long scale on the front page.',
   'calibration.scale.fold.step2':
-    'Fold the left edge of the paper over so the crease runs along the left fold line. The printed side stays inside. Press the crease flat.',
+    'Fold the edge of the page over to the line on the left side. The printed side stays inside. Crease along the line and press it flat.',
   'calibration.scale.fold.step3':
     'The paper edge now lies over a small gauge. Read the number at the edge. If it falls between two ticks, choose the nearer tick. Unfold the paper.',
   'calibration.scale.fold.step4': 'Do the same on the right edge.',

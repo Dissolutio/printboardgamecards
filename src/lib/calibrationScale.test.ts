@@ -28,6 +28,24 @@ import {
   type Point,
 } from './geometry.ts'
 
+function foldLabelBox(
+  paper: (typeof PAPER)[keyof typeof PAPER],
+  side: 'left' | 'right',
+  cardSize = CARD_PRESETS.POKER,
+  scaleY = 30,
+  gaugeY = 50,
+) {
+  return foldGuideLabelBox({
+    paper,
+    grid: calculateGrid({ paper, card: cardSize }),
+    cardSize,
+    calibration: { offsetX: 0, offsetY: 0 },
+    scaleY,
+    gaugeY,
+    side,
+  })
+}
+
 describe('fullWidthScaleTicks', () => {
   const ticks = fullWidthScaleTicks(PAPER.LETTER.width)
 
@@ -89,9 +107,11 @@ describe('fold guide and gauge geometry', () => {
       expect(leftTicks.map(({ xPt }) => Math.round((paper.width - xPt) * 1000) / 1000)).toEqual(
         rightTicks.map(({ xPt }) => xPt),
       )
-      expect(leftTicks.filter(({ kind }) => kind === 'major').map(({ label }) => label)).toEqual(
-        ['0', '2', '4', '6', '8', '10', '12', '14'],
+      expect(leftTicks.filter(({ label }) => label !== undefined).map(({ label }) => label)).toEqual(
+        ['2', '4', '6', '8', '10', '12', '14'],
       )
+      expect(leftTicks[0]).toMatchObject({ mm: 0, kind: 'major' })
+      expect(leftTicks[0]?.label).toBeUndefined()
       expect(leftTicks.filter(({ kind }) => kind === 'mid')).toHaveLength(7)
       expect(leftTicks.filter(({ kind }) => kind === 'minor')).toHaveLength(14)
     })
@@ -121,7 +141,6 @@ describe('calibration label boxes', () => {
         const ticks = scaleGaugeTicks(paper.width, side)
 
         expect(labels.map(({ text }) => text)).toEqual([
-          '0',
           '2',
           '4',
           '6',
@@ -130,6 +149,7 @@ describe('calibration label boxes', () => {
           '12',
           '14',
         ])
+        expect(labels.some(({ mm }) => mm === 0)).toBe(false)
         for (const label of labels) {
           expect(label.width).toBeCloseTo(label.text.length * label.fontSize * 0.556)
         }
@@ -173,11 +193,20 @@ describe('calibration label boxes', () => {
       }
     })
 
-    it(`keeps fold captions inside the guides and clear of scale marks on ${paperName}`, () => {
+    it(`keeps fold instructions inside the guides and clear of scale marks on ${paperName}`, () => {
       const y = 30
       const sides = ['left', 'right'] as const
+      const cardSize = CARD_PRESETS.POKER
+      const grid = calculateGrid({ paper, card: cardSize })
+      const gaugeY =
+        calibrationScaleGaugeY({
+          paper,
+          grid,
+          cardSize,
+          backOffsetY: 0,
+        }) ?? 50
       const captions = sides.map((side) =>
-        foldGuideLabelBox(paper.width, y, side),
+        foldLabelBox(paper, side, cardSize, y, gaugeY),
       )
       const foldXs = foldGuideXs(paper.width)
       const ticks = fullWidthScaleTicks(paper.width)
@@ -186,6 +215,13 @@ describe('calibration label boxes', () => {
         .map((tick) => fullWidthScaleLabelBox(tick, y))
 
       expect(captions.map(({ textAlign }) => textAlign)).toEqual(['left', 'right'])
+      expect(captions.every(({ fontSize }) => fontSize >= 7)).toBe(true)
+      expect(
+        captions.every(
+          ({ height, fontSize, lineCount }) =>
+            height >= 1.4 * fontSize * lineCount,
+        ),
+      ).toBe(true)
       for (const [index, side] of sides.entries()) {
         const caption = captions[index]!
         const foldX = foldXs[side]
@@ -198,7 +234,7 @@ describe('calibration label boxes', () => {
         expect(caption.left + caption.width).toBeLessThanOrEqual(
           paper.width - inset,
         )
-        expect(distanceFromGuide).toBeGreaterThanOrEqual(3)
+        expect(distanceFromGuide).toBeGreaterThanOrEqual(0.5)
         for (const tick of ticks) {
           const length = fullWidthScaleTickLength(tick)
           expect(
@@ -220,24 +256,6 @@ describe('calibration label boxes', () => {
         { left: paper.width / 2 - 155, top: noteY, width: 150, height: 8 },
         { left: paper.width / 2 + 5, top: noteY, width: 60, height: 8 },
       ]
-      expect(captions).toEqual([
-        {
-          left: foldXs.left + 45,
-          top: 17,
-          width: 36,
-          height: 8,
-          fontSize: 5,
-          textAlign: 'left',
-        },
-        {
-          left: foldXs.right - 81,
-          top: 17,
-          width: 36,
-          height: 8,
-          fontSize: 5,
-          textAlign: 'right',
-        },
-      ])
       const heading = { left: 14, top: 14, width: 40, height: 10 }
       const scaleLine = {
         left: 0,
@@ -248,6 +266,10 @@ describe('calibration label boxes', () => {
       for (const caption of captions) {
         expect(intersects(caption, heading)).toBe(false)
         expect(intersects(caption, scaleLine)).toBe(false)
+        expect(caption.top).toBeGreaterThanOrEqual(inset)
+        expect(caption.top + caption.height).toBeLessThanOrEqual(
+          paper.height - inset,
+        )
       }
       for (const note of noteBoxes) {
         expect(intersects(note, heading)).toBe(false)
