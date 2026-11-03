@@ -12,7 +12,6 @@ import {
   trimRects,
   cornerLabelBoxes,
   foldGuideLabelBox,
-  fullWidthScaleLabelBox,
   calibrationScaleY,
   cornerScaleTicks,
   foldGuideXs,
@@ -45,18 +44,19 @@ function CalibrationCrosshair({ mark }: { mark: CalibrationMark }) {
         height: 6,
       }}
     >
-      <View
-        style={{
-          position: 'absolute',
-          left: 1,
-          top: 1,
-          width: size,
-          height: size,
-          borderWidth: 0.25,
-          borderColor: '#000000',
-          borderRadius: mark.shape === 'circle' ? size / 2 : 0,
-        }}
-      />
+      {mark.shape === 'square' && (
+        <View
+          style={{
+            position: 'absolute',
+            left: 1,
+            top: 1,
+            width: size,
+            height: size,
+            borderWidth: 0.25,
+            borderColor: '#000000',
+          }}
+        />
+      )}
       <View
         style={{
           position: 'absolute',
@@ -132,23 +132,6 @@ function FullWidthScale({
           />
         )
       })}
-      {side === 'front' &&
-        ticks.map(
-          (tick) =>
-            tick.label !== undefined && (
-              <Text
-                key={`full-label-${tick.mm}`}
-                style={{
-                  position: 'absolute',
-                  ...fullWidthScaleLabelBox(tick, y),
-                  textAlign: 'center',
-                  color: '#000000',
-                }}
-              >
-                {tick.label}
-              </Text>
-            ),
-        )}
     </>
   )
 }

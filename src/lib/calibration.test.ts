@@ -90,11 +90,11 @@ describe('calibrationMarks', () => {
     bleed: DEFAULT_BLEED,
   })
 
-  it('returns four circle and four square marks mirrored at zero offset', () => {
+  it('returns four plain front marks and four square back marks mirrored at zero offset', () => {
     const marks = calibrationMarks(grid, paper, { offsetX: 0, offsetY: 0 })
 
     expect(marks.front).toHaveLength(4)
-    expect(marks.front.every((mark) => mark.shape === 'circle')).toBe(true)
+    expect(marks.front.every((mark) => mark.shape === 'none')).toBe(true)
     expect(marks.back).toHaveLength(4)
     expect(marks.back.every((mark) => mark.shape === 'square')).toBe(true)
     expect(marks.back.map(({ x, y }) => ({ x, y }))).toEqual(
