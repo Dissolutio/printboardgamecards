@@ -374,34 +374,41 @@ function CornerScale({
         const length =
           tick.mm === 0 ? 6 : tick.kind === 'mid' ? 4 : 2
         const tickX = mark.x + offsetPt
-        const crossesFoldLine = [foldXs.left, foldXs.right].some(
+        const verticalCrossesFoldLine = [foldXs.left, foldXs.right].some(
           (foldX) => Math.abs(foldX - tickX) < 0.375,
         )
-
-        if (crossesFoldLine) return null
+        const horizontalCrossesFoldLine = [foldXs.left, foldXs.right].some(
+          (foldX) =>
+            foldX > mark.x - length / 2 - 0.25 &&
+            foldX < mark.x + length / 2 + 0.25,
+        )
 
         return (
           <Fragment key={`corner-tick-${mark.x}-${mark.y}-${tick.mm}`}>
-            <View
-              style={{
-                position: 'absolute',
-                left: mark.x + offsetPt - 0.125,
-                top: mark.y - length / 2,
-                width: 0.25,
-                height: length,
-                backgroundColor: '#000000',
-              }}
-            />
-            <View
-              style={{
-                position: 'absolute',
-                left: mark.x - length / 2,
-                top: mark.y + offsetPt - 0.125,
-                width: length,
-                height: 0.25,
-                backgroundColor: '#000000',
-              }}
-            />
+            {!verticalCrossesFoldLine && (
+              <View
+                style={{
+                  position: 'absolute',
+                  left: tickX - 0.125,
+                  top: mark.y - length / 2,
+                  width: 0.25,
+                  height: length,
+                  backgroundColor: '#000000',
+                }}
+              />
+            )}
+            {!horizontalCrossesFoldLine && (
+              <View
+                style={{
+                  position: 'absolute',
+                  left: mark.x - length / 2,
+                  top: mark.y + offsetPt - 0.125,
+                  width: length,
+                  height: 0.25,
+                  backgroundColor: '#000000',
+                }}
+              />
+            )}
           </Fragment>
         )
       })}

@@ -207,6 +207,60 @@ describe('CalibrationDoc', () => {
     expect(componentCount('FullWidthScale')).toBe(2)
   })
 
+  it('keeps the clear corner-scale tick stroke when the other stroke meets a fold line', () => {
+    const paper = PAPER.LETTER
+    const cardSize = CARD_PRESETS.MINI
+    const grid = calculateGrid({ paper, card: cardSize })
+    const calibration = { offsetX: 0, offsetY: 0 }
+    const mark = calibrationMarks(grid, paper, calibration).front.find(
+      ({ x, y }) => x < paper.width / 2 && y < paper.height / 2,
+    )!
+    const tree = CalibrationDoc({ paper, cardSize, grid, calibration })
+    const cornerScale = elementsIn(tree).find(
+      (element) =>
+        typeof element.type === 'function' &&
+        element.type.name === 'CornerScale' &&
+        (element.props as { mark: { x: number; y: number } }).mark.x === mark.x &&
+        (element.props as { mark: { x: number; y: number } }).mark.y === mark.y,
+    )!
+    const render = cornerScale.type as (props: {
+      mark: typeof mark
+      paper: Size
+    }) => ReactNode
+    const tick = cornerScaleTicks().find(({ mm }) => mm === -1.5)!
+    const offsetPt = tick.offsetPt ?? 0
+    const length = 2
+    const foldX = foldGuideXs(paper.width).left
+    const tickX = mark.x + offsetPt
+    const scaleViews = elementsIn(
+      render(cornerScale.props as { mark: typeof mark; paper: Size }),
+    )
+      .filter((element) => element.type === View)
+      .map((element) => (element.props as {
+        style: { left: number; top: number; width: number; height: number }
+      }).style)
+
+    expect(Math.abs(foldX - tickX)).toBeLessThan(0.375)
+    expect(
+      scaleViews.some(
+        ({ left, top, width, height }) =>
+          left === tickX - 0.125 &&
+          top === mark.y - length / 2 &&
+          width === 0.25 &&
+          height === length,
+      ),
+    ).toBe(false)
+    expect(
+      scaleViews.some(
+        ({ left, top, width, height }) =>
+          left === mark.x - length / 2 &&
+          top === mark.y + offsetPt - 0.125 &&
+          width === length &&
+          height === 0.25,
+      ),
+    ).toBe(true)
+  })
+
   it('renders the instruction inside each fold guide with inward alignment', () => {
     const paper = PAPER.LETTER
     const cardSize = CARD_PRESETS.POKER
