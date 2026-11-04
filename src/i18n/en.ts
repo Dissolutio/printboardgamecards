@@ -1,6 +1,13 @@
 import type { Catalog } from './messages.ts'
 
 export const en: Catalog = {
+  'adjustPdf.error.notAPdf': 'This file is not a valid PDF. Choose a PDF file and try again.',
+  'adjustPdf.error.encrypted':
+    'This PDF needs a password. Choose a PDF that does not need a password.',
+  'adjustPdf.error.empty': 'This PDF has no pages. Choose a PDF with at least one page.',
+  'adjustPdf.error.rotated':
+    'This PDF has rotated pages. Rotate the pages in another app and try again.',
+  'adjustPdf.error.tooLarge': 'This PDF exceeds the size limit. Choose a smaller PDF.',
   'calibration.offset.current': 'Current offset: X {x} mm, Y {y} mm.',
   'calibration.reset.button': 'Reset offsets',
   'calibration.download.preparing': 'Preparing the calibration sheet.',
