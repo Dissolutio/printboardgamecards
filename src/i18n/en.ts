@@ -3,21 +3,47 @@ import type { Catalog } from './messages.ts'
 export const en: Catalog = {
   'calibration.offset.current': 'Current offset: X {x} mm, Y {y} mm.',
   'calibration.reset.button': 'Reset offsets',
+  'calibration.intro':
+    'Your printer may already be accurate. This check tells you whether you need to correct anything. If you cut by hand, you will probably not need to.',
+  'calibration.step.download': 'Download the sheet',
+  'calibration.step.setup': 'Set up the print',
+  'calibration.step.scale': 'Check the printer scale',
+  'calibration.step.corners': 'Read the corners',
+  'calibration.step.result': 'Result',
   'calibration.download.preparing': 'Preparing the calibration sheet.',
   'calibration.download.button': 'Download calibration sheet',
-  'calibration.instructions.actualSize': 'Print the sheet at 100% scale.',
-  'calibration.instructions.longEdge': 'Turn it over along its long edge. Print page 2 on the back.',
-  'calibration.instructions.light': 'Hold the sheet toward a light. Look from the front side.',
+  'calibration.setup.scale':
+    'Choose Actual Size, 100 percent, or None. Turn off Fit to Page, Shrink to Printable Area, and Auto Rotate and Center.',
+  'calibration.setup.scale.why':
+    'These settings shrink or move the page. That makes every reading inaccurate.',
+  'calibration.setup.duplex':
+    'If your printer prints both sides by itself, choose Two-sided with Long Edge. This is also called Flip on long edge. Print both pages in one job.',
+  'calibration.setup.duplex.why':
+    'The printer flips the paper for you. This is more accurate than turning the sheet by hand.',
+  'calibration.setup.hand':
+    'If you must turn the sheet by hand, turn it as you turn a book page. Keep the top at the top. Hold the sheet to a light. Check that the arrows labeled front and back both point up.',
+  'calibration.setup.hand.why':
+    'A downward arrow means you flipped the sheet the wrong way.',
   'calibration.instructions.cornerMarks':
-    'Look at one corner mark. The circle is the front mark. The square is the back mark.',
-  'calibration.instructions.horizontalReading':
-    'Find where the vertical line of the back mark crosses the horizontal scale of the front mark. Read the number in millimeters.',
-  'calibration.instructions.verticalReading':
-    'Find where the horizontal line of the back mark crosses the vertical scale. Read that number.',
+    'The front mark is a crosshair with a millimeter scale. The back mark is a crosshair with a small square.',
   'calibration.instructions.direction':
-    'Positive numbers are to the right and downward. Negative numbers are to the left and upward.',
+    'A positive horizontal reading places the back mark to the right. A positive vertical reading places it lower. A negative horizontal reading places it to the left. A negative vertical reading places it higher.',
   'calibration.instructions.average':
     'Read two opposite corners. If the readings differ by more than {limit} {unit}, enter the average offset.',
+  'calibration.instructions.zero':
+    'The longest tick marks zero. Each longer tick after zero marks one millimeter. The numbers 5 and -5 mark the ends.',
+  'calibration.instructions.horizontal':
+    'Find where the vertical line of the back mark crosses the horizontal scale. Count the longer ticks from zero.',
+  'calibration.instructions.fraction':
+    'If the line falls between two longer ticks, estimate the part of a millimeter.',
+  'calibration.instructions.vertical':
+    'Find where the horizontal line of the back mark crosses the vertical scale. Count the same way.',
+  'calibration.scale.stop':
+    'Stop here. Fix the print settings and print the sheet again before you read the corners.',
+  'calibration.advice.skip':
+    'Your printer is accurate enough. You do not need to apply a correction.',
+  'calibration.advice.apply':
+    'Apply this correction, then print the sheet again to check it.',
   'calibration.scale.heading': 'Check the printer scaling',
   'calibration.scale.location': 'Look at the long scale at the top or bottom of the front page.',
   'calibration.scale.count':
@@ -57,7 +83,6 @@ export const en: Catalog = {
     'The two readings disagree. Check your folds and measurements.',
   'calibration.scale.unavailable':
     'This card size has no long scale on the calibration sheet.',
-  'calibration.measured.legend': 'Measured correction',
   'calibration.offsetX.label': 'Horizontal reading on the printed scale (mm)',
   'calibration.offsetX.hint':
     'Enter a positive number if the back mark is to the right of the front mark. Enter a negative number if it is to the left.',
