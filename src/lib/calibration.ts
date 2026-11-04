@@ -17,7 +17,7 @@ export type CalibrationDeltaMm = {
 }
 
 export type CalibrationMark = Point & {
-  shape: 'circle' | 'square'
+  shape: 'none' | 'square'
 }
 
 export type CalibrationMarks = {
@@ -127,7 +127,7 @@ export function calibrationMarks(
   ]
 
   return {
-    front: frontPositions.map((point) => ({ ...point, shape: 'circle' })),
+    front: frontPositions.map((point) => ({ ...point, shape: 'none' })),
     back: frontPositions.map((point) => ({
       ...applyCalibration(
         { x: paper.width - point.x, y: point.y },

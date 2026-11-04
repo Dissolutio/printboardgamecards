@@ -10,7 +10,6 @@ import {
   foldGuideXs,
   foldGuideLabelBox,
   fullWidthScaleTicks,
-  fullWidthScaleLabelBox,
   fullWidthScaleTickLength,
   scaleEstimatesDisagree,
   scaleGaugeLabelBoxes,
@@ -49,11 +48,15 @@ function foldLabelBox(
 describe('fullWidthScaleTicks', () => {
   const ticks = fullWidthScaleTicks(PAPER.LETTER.width)
 
-  it('returns 201 ticks from -100 through +100 mm', () => {
+  it('returns 201 unlabeled ticks from -100 through +100 mm', () => {
     expect(ticks).toHaveLength(201)
-    expect(ticks[0]).toMatchObject({ mm: -100, kind: 'major', label: '-100' })
-    expect(ticks[100]).toMatchObject({ mm: 0, kind: 'major', label: '0' })
-    expect(ticks[200]).toMatchObject({ mm: 100, kind: 'major', label: '100' })
+    expect(ticks[0]).toMatchObject({ mm: -100, kind: 'major' })
+    expect(ticks[100]).toMatchObject({ mm: 0, kind: 'major' })
+    expect(ticks[200]).toMatchObject({ mm: 100, kind: 'major' })
+    expect(ticks.every(({ label }) => label === undefined)).toBe(true)
+    expect(ticks.filter(({ kind }) => kind === 'major')).toHaveLength(21)
+    expect(ticks.filter(({ kind }) => kind === 'mid')).toHaveLength(20)
+    expect(ticks.filter(({ kind }) => kind === 'minor')).toHaveLength(160)
   })
 
   it('places zero at the page center for Letter and A4', () => {
@@ -61,8 +64,8 @@ describe('fullWidthScaleTicks', () => {
     expect(fullWidthScaleTicks(PAPER.A4.width)[100].xPt).toBe(297.5)
   })
 
-  it('labels only major ticks and limits positions to three decimals', () => {
-    expect(ticks[90]).toMatchObject({ mm: -10, kind: 'major', label: '-10' })
+  it('keeps major, mid, and minor ticks and limits positions to three decimals', () => {
+    expect(ticks[90]).toMatchObject({ mm: -10, kind: 'major' })
     expect(ticks[95]).toMatchObject({ mm: -5, kind: 'mid' })
     expect(ticks[95].label).toBeUndefined()
     expect(ticks[96]).toMatchObject({ mm: -4, kind: 'minor' })
@@ -210,10 +213,6 @@ describe('calibration label boxes', () => {
       )
       const foldXs = foldGuideXs(paper.width)
       const ticks = fullWidthScaleTicks(paper.width)
-      const scaleLabels = ticks
-        .filter((tick) => tick.label !== undefined)
-        .map((tick) => fullWidthScaleLabelBox(tick, y))
-
       expect(captions.map(({ textAlign }) => textAlign)).toEqual(['left', 'right'])
       expect(captions.every(({ fontSize }) => fontSize >= 7)).toBe(true)
       expect(
@@ -246,9 +245,6 @@ describe('calibration label boxes', () => {
             }),
           ).toBe(false)
         }
-        for (const label of scaleLabels) {
-          expect(intersects(caption, label)).toBe(false)
-        }
       }
 
       const noteY = Math.max(17, y - 13)
@@ -278,9 +274,6 @@ describe('calibration label boxes', () => {
         expect(note.top).toBeGreaterThanOrEqual(inset)
         expect(note.left + note.width).toBeLessThanOrEqual(paper.width - inset)
         expect(note.top + note.height).toBeLessThanOrEqual(paper.height - inset)
-        for (const label of scaleLabels) {
-          expect(intersects(note, label)).toBe(false)
-        }
       }
       expect(intersects(captions[0]!, captions[1]!)).toBe(false)
       expect(intersects(noteBoxes[0]!, noteBoxes[1]!)).toBe(false)
@@ -291,21 +284,6 @@ describe('calibration label boxes', () => {
       ).toBe(false)
     })
 
-    it(`keeps every full-width scale label inside the ${paperName} inset`, () => {
-      const boxes = fullWidthScaleTicks(paper.width)
-        .filter((tick) => tick.label !== undefined)
-        .map((tick) => fullWidthScaleLabelBox(tick, 30))
-
-      expect(
-        boxes.every(
-          ({ left, top, width, height }) =>
-            left >= inset &&
-            top >= inset &&
-            left + width <= paper.width - inset &&
-            top + height <= paper.height - inset,
-        ),
-      ).toBe(true)
-    })
   }
 })
 

@@ -158,30 +158,8 @@ export function fullWidthScaleTicks(paperWidthPt: number): ScaleTick[] {
       mm,
       xPt: roundThousandth(paperWidthPt / 2 + mmToPt(mm)),
       kind,
-      ...(kind === 'major' ? { label: String(mm) } : {}),
     }
   })
-}
-
-export function fullWidthScaleLabelBox(
-  tick: ScaleTick,
-  y: number,
-): CalibrationLabelBox {
-  const width = 26
-  const x = tick.xPt ?? 0
-
-  return {
-    left:
-      tick.mm === -100
-        ? x + 3
-        : tick.mm === 100
-          ? x - width - 3
-          : x - width / 2,
-    top: y + (Math.abs(tick.mm) === 100 ? 8 : 5),
-    width,
-    height: Math.abs(tick.mm) === 100 ? 7 : 9,
-    fontSize: Math.abs(tick.mm) === 100 ? 5 : 6,
-  }
 }
 
 export function fullWidthScaleTickLength(tick: ScaleTick): number {
@@ -261,9 +239,6 @@ function foldGuideObstacles({
     ...trimRects(grid, cardSize, calibration, 'front'),
     ...marks.map((mark) => cornerScaleBounds(mark, paper)),
     { left: 14, top: 14, width: 40, height: 10 },
-    ...scaleTicks
-      .filter((tick) => tick.label !== undefined)
-      .map((tick) => fullWidthScaleLabelBox(tick, scaleY)),
     ...scaleTicks.map((tick) => ({
       left: (tick.xPt ?? 0) - 0.15,
       top: scaleY - fullWidthScaleTickLength(tick) / 2,

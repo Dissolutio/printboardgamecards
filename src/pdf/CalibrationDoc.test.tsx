@@ -7,8 +7,6 @@ import {
   cornerLabelBoxes,
   cornerScaleTicks,
   foldGuideLabelBox,
-  fullWidthScaleLabelBox,
-  fullWidthScaleTicks,
   foldGuideXs,
   scaleGaugeLabelBoxes,
   scaleGaugeTicks,
@@ -101,6 +99,10 @@ async function inflatePdfStreams(bytes: Uint8Array): Promise<string[]> {
 }
 
 function extractPdfText(content: string): string {
+  return extractPdfTextItems(content).join('')
+}
+
+function extractPdfTextItems(content: string): string[] {
   const textArrays = content.matchAll(/\[([^\]]*)\]\s*TJ/g)
 
   return [...textArrays]
@@ -117,7 +119,6 @@ function extractPdfText(content: string): string {
         )
         .join(''),
     )
-    .join('')
 }
 
 function intersects(
@@ -205,6 +206,38 @@ describe('CalibrationDoc', () => {
     expect(componentCount('ScaleGauge')).toBe(2)
     expect(componentCount('ScaleDimensionNote')).toBe(1)
     expect(componentCount('FullWidthScale')).toBe(2)
+  })
+
+  it('renders front marks without circles and keeps squares around back marks', () => {
+    const paper = PAPER.LETTER
+    const cardSize = CARD_PRESETS.POKER
+    const tree = CalibrationDoc({
+      paper,
+      cardSize,
+      grid: calculateGrid({ paper, card: cardSize }),
+      calibration: { offsetX: 0, offsetY: 0 },
+    })
+    const crosshairs = elementsIn(tree).filter(
+      (element) =>
+        typeof element.type === 'function' &&
+        element.type.name === 'CalibrationCrosshair',
+    )
+
+    expect(crosshairs).toHaveLength(8)
+    for (const [index, crosshair] of crosshairs.entries()) {
+      const render = crosshair.type as (props: {
+        mark: { shape: 'none' | 'square' }
+      }) => ReactNode
+      const views = elementsIn(
+        render(crosshair.props as { mark: { shape: 'none' | 'square' } }),
+      ).filter((element) => element.type === View)
+      const outlines = views.filter((element) => {
+        const style = (element.props as { style: Record<string, unknown> }).style
+        return 'borderWidth' in style
+      })
+
+      expect(outlines).toHaveLength(index < 4 ? 0 : 1)
+    }
   })
 
   it('keeps the clear corner-scale tick stroke when the other stroke meets a fold line', () => {
@@ -466,20 +499,16 @@ describe('CalibrationDoc', () => {
       expect(scaleY).not.toBeNull()
       expect(gaugeY).not.toBeNull()
 
-      const lineY = scaleY ?? 0
       boxes.push(
-        ...fullWidthScaleTicks(paper.width)
-          .filter((tick) => tick.label !== undefined)
-          .map((tick) => fullWidthScaleLabelBox(tick, lineY)),
         {
           left: paper.width / 2 - 155,
-          top: Math.max(17, lineY - 13),
+          top: Math.max(17, (scaleY ?? 0) - 13),
           width: 150,
           height: 8,
         },
         {
           left: paper.width / 2 + 5,
-          top: Math.max(17, lineY - 13),
+          top: Math.max(17, (scaleY ?? 0) - 13),
           width: 60,
           height: 8,
         },
@@ -915,12 +944,26 @@ describe('CalibrationDoc', () => {
         calibration={{ offsetX: 0, offsetY: 0 }}
       />,
     )
-    const textStreams = (await inflatePdfStreams(pdfBytes)).map(extractPdfText)
+    const inflatedStreams = await inflatePdfStreams(pdfBytes)
+    const textStreams = inflatedStreams.map(extractPdfText)
+    const textItems = inflatedStreams.flatMap(extractPdfTextItems).map((item) =>
+      item.trim(),
+    )
     const frontText = textStreams.find((content) => content.includes('FRONT'))
     const backText = textStreams.find((content) => content.includes('BACK'))
     const instruction =
       'Fold edge of page to this line and crease along line.'
+    const fullWidthLabels = Array.from({ length: 21 }, (_, index) =>
+      String((index - 10) * 10),
+    )
 
+    for (const label of fullWidthLabels.filter(
+      (value) => value !== '0' && value !== '10',
+    )) {
+      expect(textItems).not.toContain(label)
+    }
+    expect(textItems).not.toContain('0')
+    expect(textItems.filter((item) => item === '10')).toHaveLength(2)
     expect(frontText).toBeDefined()
     expect(backText).toBeDefined()
     const compactFrontText = frontText?.replace(/\s+/g, '')
@@ -932,6 +975,9 @@ describe('CalibrationDoc', () => {
     expect(frontText).toContain('7.87')
     expect(frontText).toContain('-5')
     expect(frontText).toContain('5')
+    for (const label of ['2', '4', '6', '8', '10', '12', '14']) {
+      expect(frontText).toContain(label)
+    }
     expect(backText).not.toContain(instruction)
     expect(backText).not.toContain('Fold here')
   })
