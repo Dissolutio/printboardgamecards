@@ -1,10 +1,22 @@
+import { createElement } from 'react'
+import { renderToBuffer } from '@react-pdf/renderer'
 import { PDFDocument, degrees, rgb } from '@cantoo/pdf-lib'
 import { describe, expect, it } from 'vitest'
-import { applyCalibration, mmToPt } from './geometry.ts'
+import {
+  applyCalibration,
+  calculateGrid,
+  CARD_PRESETS,
+  mmToPt,
+  PAPER,
+} from './geometry.ts'
 import { adjustDuplexPdf, backShiftPt } from './adjustDuplexPdf.ts'
+import type { Card } from '../types.ts'
+import DuplexDoc from '../pdf/DuplexDoc.tsx'
 
 const encryptedPdf =
   'JVBERi0xLjcKJeLjz9MKMSAwIG9iago8PCAvVHlwZSAvQ2F0YWxvZyAvUGFnZXMgMiAwIFIgPj4KZW5kb2JqCjIgMCBvYmoKPDwgL1R5cGUgL1BhZ2VzIC9LaWRzIFszIDAgUl0gL0NvdW50IDEgPj4KZW5kb2JqCjMgMCBvYmoKPDwgL1R5cGUgL1BhZ2UgL1BhcmVudCAyIDAgUiAvTWVkaWFCb3ggWzAgMCAxMDAgMTIwXSA+PgplbmRvYmoKNCAwIG9iago8PCAvRmlsdGVyIC9TdGFuZGFyZCAvViAxIC9SIDIgL0xlbmd0aCA0MCAvTyA8MzY0ZTM3MzdmNGQzNmU2ZmJhZDljZTMxZDliNmQ0NDBlMzlhYzY0N2ZhMTY4ZjRjYTc4OTY0NDEzY2I5OGU2Mz4gL1UgPDZkYTAzZWI4NWRkZTdiZTEwYWQyOGE0NGYwZWU2ZTE2MjA1YjgwOTdjYWQxMTVhNDk5NmYwZjA4Mzc2MTUzNTY+IC9QIC00ID4+CmVuZG9iagp4cmVmCjAgNQowMDAwMDAwMDAwIDY1NTM1IGYgCjAwMDAwMDAwMTUgMDAwMDAgbiAKMDAwMDAwMDA2NCAwMDAwMCBuIAowMDAwMDAwMTIxIDAwMDAwIG4gCjAwMDAwMDAxOTIgMDAwMDAwIG4gCnRyYWlsZXIKPDwgL1NpemUgNSAvUm9vdCAxIDAgUiAvRW5jcnlwdCA0IDAgUiAvSUQgWzwwMDExMjIzMzQ0NTU2Njc3ODg5OWFhYmJjY2RkZWVmZj4gPDAwMTEyMjMzNDQ1NTY2Nzc4ODk5YWFiYmNjZGRlZWZmPl0gPj4Kc3RhcnR4cmVmCjM5OAolJUVPRgo'
+const pixel =
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAXpeqz8AAAAASUVORK5CYII='
 
 async function createPdf(sizes: Array<[number, number]>): Promise<Uint8Array> {
   const document = await PDFDocument.create({ updateMetadata: false })
@@ -29,6 +41,14 @@ function marker(page: ReturnType<PDFDocument['getPages']>[number]) {
     throw new Error('The marker rectangle was not found.')
   }
   return graphics
+}
+
+function imageMarker(page: ReturnType<PDFDocument['getPages']>[number]) {
+  const image = page.extractContents().find((asset) => asset.kind === 'image')
+  if (!image || image.kind !== 'image') {
+    throw new Error('The image marker was not found.')
+  }
+  return image
 }
 
 const defaultOptions = { offsetXmm: 1.25, offsetYmm: -2.5 }
@@ -124,6 +144,48 @@ describe('adjustDuplexPdf', () => {
     expect(onePage.shiftedPages).toEqual([])
   })
 
+  it('matches the back movement in the application PDF export', async () => {
+    const card: Card = {
+      id: 'calibration-check',
+      bleedMode: 'IMAGE',
+      frontProcessedSrc: pixel,
+      backProcessedSrc: pixel,
+      frontCrop: { x: 0, y: 0, width: 750, height: 1050 },
+      backCrop: { x: 0, y: 0, width: 750, height: 1050 },
+      frontBackground: { enabled: true, color: '#ffffff' },
+      backBackground: { enabled: true, color: '#ffffff' },
+      bleedColor: '#ffffff',
+      quantity: 1,
+    }
+    const grid = calculateGrid({ paper: PAPER.LETTER, card: CARD_PRESETS.MINI })
+    const renderSheet = (offsetX: number, offsetY: number) =>
+      renderToBuffer(
+        createElement(DuplexDoc, {
+          cards: [card],
+          paper: PAPER.LETTER,
+          grid,
+          cardSize: CARD_PRESETS.MINI,
+          calibration: { offsetX, offsetY },
+        }) as unknown as Parameters<typeof renderToBuffer>[0],
+      )
+    const calibratedX = mmToPt(defaultOptions.offsetXmm)
+    const calibratedY = mmToPt(defaultOptions.offsetYmm)
+    const original = await PDFDocument.load(await renderSheet(0, 0))
+    const calibrated = await PDFDocument.load(await renderSheet(calibratedX, calibratedY))
+    const adjusted = await PDFDocument.load(
+      (await adjustDuplexPdf(await renderSheet(0, 0), defaultOptions)).bytes,
+    )
+    const originalBack = imageMarker(original.getPages()[1]!)
+    const calibratedBack = imageMarker(calibrated.getPages()[1]!)
+    const adjustedBack = imageMarker(adjusted.getPages()[1]!)
+    const shift = backShiftPt(defaultOptions.offsetXmm, defaultOptions.offsetYmm)
+
+    expect(calibratedBack.x - originalBack.x).toBeCloseTo(shift.dx)
+    expect(calibratedBack.y - originalBack.y).toBeCloseTo(shift.dy)
+    expect(adjustedBack.x).toBeCloseTo(calibratedBack.x)
+    expect(adjustedBack.y).toBeCloseTo(calibratedBack.y)
+  })
+
   it('reports an empty PDF', async () => {
     const document = await PDFDocument.create({ updateMetadata: false })
     const input = await document.save({ addDefaultPage: false })
@@ -134,13 +196,31 @@ describe('adjustDuplexPdf', () => {
     })
   })
 
+  it('rejects PDFs with annotations that cannot be preserved', async () => {
+    const source = await PDFDocument.load(await createPdf([[200, 300]]))
+    const annotation = source.context.obj({
+      Type: 'Annot',
+      Subtype: 'Text',
+      Rect: [0, 0, 20, 20],
+    })
+    source.getPages()[0].node.addAnnot(source.context.register(annotation))
+
+    await expect(adjustDuplexPdf(await source.save(), defaultOptions)).rejects.toMatchObject({
+      name: 'AdjustPdfError',
+      code: 'ANNOTATIONS_UNSUPPORTED',
+    })
+  })
+
   it('reports invalid, encrypted, rotated, and oversized PDFs', async () => {
     await expect(
       adjustDuplexPdf(new TextEncoder().encode('not a PDF'), defaultOptions),
     ).rejects.toMatchObject({ code: 'NOT_A_PDF' })
 
     await expect(
-      adjustDuplexPdf(Buffer.from(encryptedPdf, 'base64'), defaultOptions),
+      adjustDuplexPdf(
+        Uint8Array.from(atob(encryptedPdf), (character) => character.charCodeAt(0)),
+        defaultOptions,
+      ),
     ).rejects.toMatchObject({ code: 'ENCRYPTED_NEEDS_PASSWORD' })
 
     const rotated = await PDFDocument.create({ updateMetadata: false })

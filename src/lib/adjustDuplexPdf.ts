@@ -21,6 +21,7 @@ export type AdjustPdfErrorCode =
   | 'ENCRYPTED_NEEDS_PASSWORD'
   | 'EMPTY'
   | 'ROTATED_PAGES_UNSUPPORTED'
+  | 'ANNOTATIONS_UNSUPPORTED'
   | 'TOO_LARGE'
 
 const errorMessageKeys: Record<AdjustPdfErrorCode, keyof typeof en> = {
@@ -28,16 +29,20 @@ const errorMessageKeys: Record<AdjustPdfErrorCode, keyof typeof en> = {
   ENCRYPTED_NEEDS_PASSWORD: 'adjustPdf.error.encrypted',
   EMPTY: 'adjustPdf.error.empty',
   ROTATED_PAGES_UNSUPPORTED: 'adjustPdf.error.rotated',
+  ANNOTATIONS_UNSUPPORTED: 'adjustPdf.error.annotations',
   TOO_LARGE: 'adjustPdf.error.tooLarge',
 }
 
 const maxInputSize = 150 * 1024 * 1024
 
 export class AdjustPdfError extends Error {
-  constructor(readonly code: AdjustPdfErrorCode) {
+  readonly code: AdjustPdfErrorCode
+
+  constructor(code: AdjustPdfErrorCode) {
     const message = en[errorMessageKeys[code]]
     super(typeof message === 'string' ? message : '')
     this.name = 'AdjustPdfError'
+    this.code = code
   }
 }
 
@@ -63,7 +68,7 @@ export async function adjustDuplexPdf(
   }
 
   const { PDFDocument, EncryptedPDFError } = await import('@cantoo/pdf-lib')
-  let source: InstanceType<typeof PDFDocument>
+  let source: Awaited<ReturnType<typeof PDFDocument.load>>
 
   try {
     source = await PDFDocument.load(input, { updateMetadata: false })
@@ -81,6 +86,9 @@ export async function adjustDuplexPdf(
 
   if (sourcePages.some((page) => page.getRotation().angle !== 0)) {
     throw new AdjustPdfError('ROTATED_PAGES_UNSUPPORTED')
+  }
+  if (sourcePages.some((page) => (page.node.Annots()?.size() ?? 0) > 0)) {
+    throw new AdjustPdfError('ANNOTATIONS_UNSUPPORTED')
   }
 
   const output = await PDFDocument.create({ updateMetadata: false })
