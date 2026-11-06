@@ -951,6 +951,7 @@ function App() {
       >
         <CalibrationPanel
           disabled={isProjectControlsDisabled}
+          printMode={printMode}
           printerProfiles={printerProfiles}
           activeProfile={activeProfile}
           hasCalibrationScale={hasCalibrationScale}

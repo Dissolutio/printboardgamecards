@@ -1,5 +1,6 @@
 import type { Dispatch, SetStateAction } from 'react'
 import type { CalibrationMm } from '../lib/calibration.ts'
+import { calibrationAdvice } from '../lib/calibrationAdvice.ts'
 import { parseMeasurement } from '../lib/calibrationInput.ts'
 import {
   estimatePrintScale,
@@ -8,6 +9,7 @@ import {
   SHEET_WIDTH_MM,
 } from '../lib/calibrationScale.ts'
 import type { PrinterProfile, PrinterProfiles } from '../lib/printerProfiles.ts'
+import type { PrintMode } from '../lib/printSummary.ts'
 import { createTranslator } from '../i18n/messages.ts'
 import { en } from '../i18n/en.ts'
 import { formatNumber, formatPercent } from '../i18n/numbers.ts'
@@ -20,6 +22,7 @@ type CalibrationDraft = {
 
 type CalibrationPanelProps = {
   disabled: boolean
+  printMode: PrintMode
   printerProfiles: PrinterProfiles
   activeProfile: PrinterProfile
   hasCalibrationScale: boolean
@@ -62,6 +65,7 @@ const translate = createTranslator(en, 'en')
 
 export default function CalibrationPanel({
   disabled,
+  printMode,
   printerProfiles,
   activeProfile,
   hasCalibrationScale,
@@ -111,11 +115,24 @@ export default function CalibrationPanel({
       estimate: NonNullable<typeof scaleEstimate>
     } => result.estimate !== undefined,
   )
+  const scaleGatePassed =
+    !hasCalibrationScale ||
+    (scaleEstimates.length > 0 &&
+      scaleEstimates.every(({ estimate }) => estimate.verdict === 'OK'))
+  const advice = calibrationAdvice({
+    observedXmm,
+    observedYmm,
+    cutting:
+      printMode === 'TWO_SIDES_MACHINE'
+        ? 'TWO_SIDES_MACHINE'
+        : 'TWO_SIDES_HAND',
+  })
 
   return (
     <section className="mb-6 space-y-4 rounded-box border border-base-300 bg-base-100 p-5">
       <div>
         <h2 className="text-lg font-semibold">Calibration</h2>
+        <p>{translate('calibration.intro')}</p>
       </div>
 
       <div className="flex flex-wrap items-end gap-3">
@@ -172,52 +189,51 @@ export default function CalibrationPanel({
 
       <ol className="list-decimal space-y-4 pl-5">
         <li>
+          <h3 className="mb-2 font-medium">
+            {translate('calibration.step.download')}
+          </h3>
           <button
             className="btn btn-primary"
             type="button"
             disabled={disabled}
             onClick={onDownloadCalibrationSheet}
           >
-            {isExporting ? 'Preparing calibration sheet…' : 'Download calibration sheet'}
+            {translate(
+              isExporting
+                ? 'calibration.download.preparing'
+                : 'calibration.download.button',
+            )}
           </button>
         </li>
         <li className="space-y-1">
-          <p>Print at Actual Size. Do not use Fit to Page.</p>
-          <p>Flip the paper on the long edge to print the back.</p>
-          <p>Place the back arrow at the top of the page.</p>
-          <p>Hold the sheet up to a light. Look from the front side.</p>
-          <p>
-            Look at one corner mark. The circle is the front mark. The square is the back mark.
-          </p>
-          <p>The front mark has a scale in millimeters in two directions.</p>
-          <p>
-            The longest tick marks zero. Each longer tick after zero marks one millimeter. The
-            numbers 5 and -5 mark the ends.
-          </p>
-          <p>
-            Find where the vertical line of the back mark crosses the horizontal scale. Count
-            the longer ticks from zero.
-          </p>
-          <p>
-            If the line falls between two longer ticks, estimate the part of a millimeter.
-          </p>
-          <p>
-            Find where the horizontal line of the back mark crosses the vertical scale. Count
-            the same way.
-          </p>
-          <p>
-            Positive numbers are to the right and downward. Negative numbers are to the left
-            and upward.
-          </p>
-          <p>
-            Read two opposite corners. If the readings differ by more than 0.5 mm, enter the
-            average.
-          </p>
+          <h3 className="font-medium">{translate('calibration.step.setup')}</h3>
+          <ul className="list-disc space-y-3 pl-5">
+            <li>
+              <p>{translate('calibration.setup.scale')}</p>
+              <p className="text-sm text-base-content/70">
+                {translate('calibration.setup.scale.why')}
+              </p>
+            </li>
+            <li>
+              <p>{translate('calibration.setup.duplex')}</p>
+              <p className="text-sm text-base-content/70">
+                {translate('calibration.setup.duplex.why')}
+              </p>
+            </li>
+            <li>
+              <p>{translate('calibration.setup.hand')}</p>
+              <p className="text-sm text-base-content/70">
+                {translate('calibration.setup.hand.why')}
+              </p>
+            </li>
+          </ul>
         </li>
       </ol>
-      {hasCalibrationScale ? (
-        <ol start={3} className="list-decimal space-y-4 pl-5">
+      <ol start={3} className="list-decimal space-y-4 pl-5">
           <li className="space-y-3">
+            <h3 className="font-medium">{translate('calibration.step.scale')}</h3>
+            {hasCalibrationScale ? (
+              <>
             <p>{translate('calibration.scale.intro')}</p>
             {hasFoldGauge && (
               <section className="space-y-3 rounded-box border border-base-300 p-4">
@@ -337,28 +353,51 @@ export default function CalibrationPanel({
                   )}
               </div>
             )}
+              </>
+            ) : (
+              <p>{translate('calibration.scale.unavailable')}</p>
+            )}
+            {hasCalibrationScale &&
+              scaleEstimates.length > 0 &&
+              !scaleGatePassed && (
+                <p role="status">{translate('calibration.scale.stop')}</p>
+              )}
           </li>
-        </ol>
-      ) : (
-        <p>{translate('calibration.scale.unavailable')}</p>
-      )}
-      <ol
-        start={hasCalibrationScale ? 4 : 3}
-        className="list-decimal space-y-4 pl-5"
-      >
+      </ol>
+      {scaleGatePassed && (
+      <ol start={4} className="list-decimal space-y-4 pl-5">
+        <li className="space-y-2">
+          <h3 className="font-medium">{translate('calibration.step.corners')}</h3>
+          <p>{translate('calibration.instructions.cornerMarks')}</p>
+          <p>{translate('calibration.instructions.zero')}</p>
+          <p>{translate('calibration.instructions.horizontal')}</p>
+          <p>{translate('calibration.instructions.fraction')}</p>
+          <p>{translate('calibration.instructions.vertical')}</p>
+          <p>{translate('calibration.instructions.direction')}</p>
+          <p>
+            {translate('calibration.instructions.average', {
+              limit: formatNumber(0.5, calibrationLocale, {
+                maximumFractionDigits: 1,
+              }),
+              unit: translate('calibration.scale.ruler.unit.mm'),
+            })}
+          </p>
+        </li>
         <li>
           <fieldset className="space-y-3 rounded-box border border-base-300 p-4">
-            <legend className="px-1 font-medium">Enter the measured distances.</legend>
+            <legend className="px-1 font-medium">
+              {translate('calibration.step.result')}
+            </legend>
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="form-control gap-1">
                 <span className="label-text">
-                  Horizontal reading on the printed scale (mm)
+                  {translate('calibration.offsetX.label')}
                 </span>
                 <input
-                  className="input input-bordered w-full"
+                  className="input input-bordered min-h-11 w-full"
                   type="number"
                   step={0.05}
-                  aria-label="Horizontal reading on the printed scale (mm)"
+                  aria-label={translate('calibration.offsetX.label')}
                   aria-invalid={
                     observedXmm.trim() !== '' && parseMeasurement(observedXmm) === undefined
                   }
@@ -370,23 +409,24 @@ export default function CalibrationPanel({
                   }}
                 />
                 <span id="observed-x-hint" className="text-sm">
-                  Enter a positive number if the back mark is to the right of the front mark.
-                  Enter a negative number if it is to the left.
+                  {translate('calibration.offsetX.hint')}
                 </span>
                 {observedXmm.trim() !== '' &&
                   parseMeasurement(observedXmm) === undefined && (
-                    <span className="text-sm text-error">Enter a number.</span>
+                    <span className="text-sm text-error">
+                      {translate('calibration.number.error')}
+                    </span>
                   )}
               </label>
               <label className="form-control gap-1">
                 <span className="label-text">
-                  Vertical reading on the printed scale (mm)
+                  {translate('calibration.offsetY.label')}
                 </span>
                 <input
-                  className="input input-bordered w-full"
+                className="input input-bordered min-h-11 w-full"
                   type="number"
                   step={0.05}
-                  aria-label="Vertical reading on the printed scale (mm)"
+                  aria-label={translate('calibration.offsetY.label')}
                   aria-invalid={
                     observedYmm.trim() !== '' && parseMeasurement(observedYmm) === undefined
                   }
@@ -398,17 +438,31 @@ export default function CalibrationPanel({
                   }}
                 />
                 <span id="observed-y-hint" className="text-sm">
-                  Enter a positive number if the back mark is lower than the front mark.
-                  Enter a negative number if it is higher.
+                  {translate('calibration.offsetY.hint')}
                 </span>
                 {observedYmm.trim() !== '' &&
                   parseMeasurement(observedYmm) === undefined && (
-                    <span className="text-sm text-error">Enter a number.</span>
+                    <span className="text-sm text-error">
+                      {translate('calibration.number.error')}
+                    </span>
                   )}
               </label>
             </div>
+            {advice && (
+              <p role="status">
+                {translate(
+                  advice.kind === 'SKIP'
+                    ? 'calibration.advice.skip'
+                    : 'calibration.advice.apply',
+                )}
+              </p>
+            )}
             <button
-              className="btn btn-secondary"
+              className={`btn min-h-11 ${
+                advice?.kind === 'SKIP'
+                  ? 'btn-outline btn-secondary'
+                  : 'btn-primary'
+              }`}
               type="button"
               disabled={
                 parseMeasurement(observedXmm) === undefined ||
@@ -417,14 +471,15 @@ export default function CalibrationPanel({
               }
               onClick={onApplyObservedCorrection}
             >
-              Apply correction
+              {translate('calibration.apply.button')}
             </button>
           </fieldset>
         </li>
       </ol>
+      )}
       {calibrationUpdated && (
         <p className="text-sm text-success" role="status">
-          The offset was updated. Print a new calibration sheet to check the result.
+          {translate('calibration.offset.updated')}
         </p>
       )}
       <details>
