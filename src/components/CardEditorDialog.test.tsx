@@ -61,11 +61,24 @@ describe('CardEditorDialog', () => {
 
     expect(markup).toContain('Card 2 of 5')
     expect(markup).toContain('aria-label="Previous card"')
+    expect(markup).toContain('role="tablist"')
+    expect(markup).toContain('role="tab"')
     expect(markup).toContain('aria-selected="true"')
+    expect(markup).toContain('aria-selected="false"')
     expect(markup).toContain('>Front</button>')
     expect(markup).toContain('>Back</button>')
     expect(markup).not.toContain('This back is used on')
     expect(cards).toEqual(before)
+  })
+
+  it('updates the displayed position when a neighboring card is selected', () => {
+    const cards = Array.from({ length: 5 }, (_, index) =>
+      makeCard(`card-${index + 1}`),
+    )
+
+    expect(renderDialog(cards, 'card-3')).toContain('Card 3 of 5')
+    expect(renderDialog(cards, 'card-4')).toContain('Card 4 of 5')
+    expect(renderDialog(cards, 'card-3')).toContain('Card 3 of 5')
   })
 
   it('disables previous and next at the ends of the deck', () => {
@@ -82,6 +95,39 @@ describe('CardEditorDialog', () => {
   it('does not render a closed editor', () => {
     expect(renderDialog([makeCard('card-1')], 'card-1', false)).toBe('')
   })
+
+  it('does not change crop or processed image data while rendering cards', () => {
+    const cards = [makeCard('card-1'), makeCard('card-2')]
+    const cropData = cards.map(({ frontCrop, backCrop, frontProcessedSrc, backProcessedSrc }) => ({
+      frontCrop: structuredClone(frontCrop),
+      backCrop: structuredClone(backCrop),
+      frontProcessedSrc,
+      backProcessedSrc,
+    }))
+
+    renderDialog(cards, 'card-1')
+    renderDialog(cards, 'card-2')
+    renderDialog(cards, 'card-1')
+
+    expect(
+      cards.map(({ frontCrop, backCrop, frontProcessedSrc, backProcessedSrc }) => ({
+        frontCrop,
+        backCrop,
+        frontProcessedSrc,
+        backProcessedSrc,
+      })),
+    ).toEqual(cropData)
+  })
+
+  it('renders the dialog navigation, duplicate, delete, and Done actions', () => {
+    const markup = renderDialog([makeCard('card-1'), makeCard('card-2')], 'card-1')
+
+    expect(markup).toContain('aria-label="Next card"')
+    expect(markup).toContain('>Duplicate card</button>')
+    expect(markup).toContain('>Delete card</button>')
+    expect(markup).toContain('>Done</button>')
+    expect(markup).toContain('aria-label="Close"')
+  })
 })
 
 describe('BackUsePanel', () => {
@@ -97,5 +143,7 @@ describe('BackUsePanel', () => {
     expect(shared).toContain('This back is used on 2 cards.')
     expect(single).not.toContain('This back is used on')
     expect(single).toContain('Other cards keep their own fronts.')
+    expect(shared).toContain('>Use this back for every card</button>')
+    expect(shared).not.toContain('disabled="">Use this back for every card</button>')
   })
 })

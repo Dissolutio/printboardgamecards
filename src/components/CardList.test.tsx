@@ -36,4 +36,27 @@ describe('CardList', () => {
     expect(markup).toContain('>Duplicate</button>')
     expect(markup).toContain('>Delete</button>')
   })
+
+  it('renders the selected card without opening an editor dialog', () => {
+    const markup = renderToStaticMarkup(
+      <CardList
+        cards={[...cards, { ...cards[0]!, id: 'card-2' }]}
+        selectedId="card-2"
+        cardSize={{ width: 180, height: 252 }}
+        disabled={false}
+        onAdd={() => {}}
+        onSelect={() => {}}
+        onQuantityStep={() => {}}
+        onDuplicate={() => {}}
+        onDelete={() => {}}
+        onChangeEveryBack={() => {}}
+      />,
+    )
+
+    expect(markup).toContain('>Card 1</span>')
+    expect(markup).toContain('>Card 2</span>')
+    expect(markup).toContain('aria-pressed="false"')
+    expect(markup).toContain('aria-pressed="true"')
+    expect(markup).not.toContain('role="dialog"')
+  })
 })
