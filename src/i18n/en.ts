@@ -1,9 +1,13 @@
 import type { Catalog } from './messages.ts'
 
 export const en: Catalog = {
+  'start.adjustPdf.title': 'Have your own PDF?',
+  'start.adjustPdf.description':
+    'Calibrate your printer, then upload your two-sided PDF. We shift the back pages to match your printer.',
+  'start.adjustPdf.button': 'Adjust my PDF',
   'adjustPdf.error.notAPdf': 'This file is not a valid PDF. Choose a PDF file and try again.',
   'adjustPdf.error.encrypted':
-    'This PDF needs a password. Choose a PDF that does not need a password.',
+    'This PDF needs a password. Save a copy without a password and try again.',
   'adjustPdf.error.empty': 'This PDF has no pages. Choose a PDF with at least one page.',
   'adjustPdf.error.rotated':
     'This PDF has rotated pages. Rotate the pages in another app and try again.',

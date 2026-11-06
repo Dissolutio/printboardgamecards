@@ -5,6 +5,10 @@ import type { PieceOrientation, Size } from '../lib/geometry.ts'
 import type { ExportMode, PaperName, PresetName } from '../hooks/useSettings.ts'
 import type { StarterBackChoice } from './StarterDeckPanel.tsx'
 import StarterDeckPanel from './StarterDeckPanel.tsx'
+import { createTranslator } from '../i18n/messages.ts'
+import { en } from '../i18n/en.ts'
+
+const translate = createTranslator(en, 'en')
 
 type StartScreenProps = {
   cardSize: Size
@@ -24,6 +28,7 @@ type StartScreenProps = {
   onOpenProject: (event: ChangeEvent<HTMLInputElement>) => void
   projectFileInput: RefObject<HTMLInputElement | null>
   onStartWithOneCard: () => void
+  onAdjustPdf: () => void
 }
 
 function StartScreen({
@@ -41,6 +46,7 @@ function StartScreen({
   onOpenProject,
   projectFileInput,
   onStartWithOneCard,
+  onAdjustPdf,
 }: StartScreenProps) {
   const [includeJokers, setIncludeJokers] = useState(false)
   const deckCount = includeJokers ? 54 : 52
@@ -136,6 +142,17 @@ function StartScreen({
                 <span>Open a project file</span>
                 <small>Continue a deck you saved.</small>
               </button>
+              <article className="start-way-card">
+                <span>{translate('start.adjustPdf.title')}</span>
+                <small>{translate('start.adjustPdf.description')}</small>
+                <button
+                  className="btn btn-primary mt-3 min-h-11 self-start"
+                  type="button"
+                  onClick={onAdjustPdf}
+                >
+                  {translate('start.adjustPdf.button')}
+                </button>
+              </article>
               {/* RestoreLastProjectSlot stays empty until autosave is available. */}
             </section>
           </div>
