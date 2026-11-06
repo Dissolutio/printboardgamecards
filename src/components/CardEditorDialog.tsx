@@ -180,7 +180,7 @@ export default function CardEditorDialog({
           >
             ‹
           </button>
-          <span className="min-w-0 flex-1 text-sm text-[#a3adc2]">
+          <span className="flex-1 whitespace-nowrap text-sm text-[#a3adc2]">
             {translate('cardEditor.header.position', {
               current: cardPosition,
               total: cards.length,
