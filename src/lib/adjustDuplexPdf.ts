@@ -67,7 +67,7 @@ export async function adjustDuplexPdf(
     throw new AdjustPdfError('TOO_LARGE')
   }
 
-  const { PDFDocument, EncryptedPDFError } = await import('@cantoo/pdf-lib')
+  const { PDFDocument, PDFDict, PDFName, EncryptedPDFError } = await import('@cantoo/pdf-lib')
   let source: Awaited<ReturnType<typeof PDFDocument.load>>
 
   try {
@@ -87,7 +87,15 @@ export async function adjustDuplexPdf(
   if (sourcePages.some((page) => page.getRotation().angle !== 0)) {
     throw new AdjustPdfError('ROTATED_PAGES_UNSUPPORTED')
   }
-  if (sourcePages.some((page) => (page.node.Annots()?.size() ?? 0) > 0)) {
+  if (
+    sourcePages.some((page) =>
+      page.node.Annots()?.asArray().some((annotation) => {
+        const dictionary = source.context.lookupMaybe(annotation, PDFDict)
+        const subtype = dictionary?.lookupMaybe(PDFName.of('Subtype'), PDFName)
+        return subtype?.decodeText() !== 'Link'
+      }),
+    )
+  ) {
     throw new AdjustPdfError('ANNOTATIONS_UNSUPPORTED')
   }
 

@@ -211,6 +211,21 @@ describe('adjustDuplexPdf', () => {
     })
   })
 
+  it('drops Link annotations from the adjusted PDF', async () => {
+    const source = await PDFDocument.load(await createPdf([[200, 300]]))
+    const link = source.context.obj({
+      Type: 'Annot',
+      Subtype: 'Link',
+      Rect: [0, 0, 20, 20],
+    })
+    source.getPages()[0].node.addAnnot(source.context.register(link))
+
+    const result = await adjustDuplexPdf(await source.save(), defaultOptions)
+    const adjusted = await PDFDocument.load(result.bytes)
+
+    expect(adjusted.getPages()[0].node.Annots()?.size() ?? 0).toBe(0)
+  })
+
   it('reports invalid, encrypted, rotated, and oversized PDFs', async () => {
     await expect(
       adjustDuplexPdf(new TextEncoder().encode('not a PDF'), defaultOptions),
