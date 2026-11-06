@@ -12,6 +12,7 @@ describe('calibrationAdvice', () => {
   })
 
   it.each([
+    ['ONE_SIDE_GLUE', 0.5, 'SKIP'],
     ['TWO_SIDES_HAND', 1.0, 'SKIP'],
     ['TWO_SIDES_HAND', 1.01, 'APPLY'],
     ['TWO_SIDES_MACHINE', 0.3, 'SKIP'],

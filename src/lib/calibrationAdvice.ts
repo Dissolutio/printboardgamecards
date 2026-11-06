@@ -32,9 +32,9 @@ export function calibrationAdvice({
 
   const worstMm = Math.max(Math.abs(x), Math.abs(y))
   const limit =
-    cutting === 'TWO_SIDES_HAND'
-      ? HAND_CUT_SKIP_LIMIT_MM
-      : MACHINE_CUT_SKIP_LIMIT_MM
+    cutting === 'TWO_SIDES_MACHINE'
+      ? MACHINE_CUT_SKIP_LIMIT_MM
+      : HAND_CUT_SKIP_LIMIT_MM
 
   return { kind: worstMm <= limit ? 'SKIP' : 'APPLY', worstMm }
 }
