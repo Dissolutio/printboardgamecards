@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { KeyboardEvent } from 'react'
 import Cropper, { type Area, type MediaSize, type Point } from 'react-easy-crop'
 import CardFace from './CardFace.tsx'
@@ -10,6 +10,9 @@ import { centeredMaximumCrop } from '../lib/cropConvert.ts'
 import { renderCrop } from '../lib/renderCrop.ts'
 import { shouldCommitCropEvent } from '../lib/cropEvents.ts'
 import type { BleedMode, Card, CardBackground, CardSide, PixelCropRect } from '../types.ts'
+import { createTranslator } from '../i18n/messages.ts'
+import { en } from '../i18n/en.ts'
+import { formatNumber } from '../i18n/numbers.ts'
 import {
   clampZoom,
   COARSE_ZOOM_STEP,
@@ -18,6 +21,8 @@ import {
   MIN_ZOOM,
   parseZoomInput,
 } from '../lib/zoom.ts'
+
+const translate = createTranslator(en, 'en')
 
 export type SideCropProps = {
   card: Card
@@ -46,8 +51,9 @@ export type SideCropProps = {
   onError: (side: CardSide, message: string | undefined) => void
   onBackgroundToggle: (side: CardSide, enabled: boolean) => void
   onBackgroundChange: (side: CardSide, color: string) => void
-  onUseBackForEveryCard?: () => void
   showImageActions?: boolean
+  showHeading?: boolean
+  extraControls?: ReactNode
 }
 
 function asCrop(area: Area): PixelCropRect {
@@ -75,8 +81,9 @@ export function SideCrop({
   onImageRemove,
   onBackgroundToggle,
   onBackgroundChange,
-  onUseBackForEveryCard,
   showImageActions = true,
+  showHeading = true,
+  extraControls,
 }: SideCropProps) {
   const workspaceRef = useRef<HTMLDivElement>(null)
   const imageInputRef = useRef<HTMLInputElement>(null)
@@ -291,340 +298,344 @@ export function SideCrop({
         isVector,
       })
     : undefined
+  const locale = new Intl.NumberFormat().resolvedOptions().locale
+  const replaceImageKey =
+    side === 'front' ? 'cardEditor.replace.front' : 'cardEditor.replace.back'
   const bleedInsetX = frameSize ? (bleed / areaWidth) * frameSize.width : 0
   const bleedInsetY = frameSize ? (bleed / areaHeight) * frameSize.height : 0
   const ringWidth = frameSize ? (bleed / cardSize.width) * frameSize.width : 0
 
   return (
-    <section className="rounded-box border border-base-300 bg-base-100 p-4">
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <h3 className="text-lg font-semibold capitalize">{side}</h3>
-        {isVector && source ? (
-          <span className="badge badge-neutral">Vector</span>
-        ) : dpi !== undefined && (
-          <span className={`badge ${isLowRes(dpi) ? 'badge-warning' : 'badge-success'}`}>
-            {dpi.toFixed(0)} DPI
-          </span>
-        )}
-      </div>
+    <section className="rounded-xl border border-[#2c3547] bg-[#10141c] p-4">
+      {showHeading && (
+        <h3 className="mb-3 text-lg font-semibold capitalize">{side}</h3>
+      )}
+      <div className="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(280px,380px)]">
+        <div className="min-w-0">
+          {source ? (
+            <>
+              <div
+                ref={workspaceRef}
+                className="cropper-workspace relative w-full overflow-hidden rounded-xl border border-[#2c3547] focus:outline focus:outline-2 focus:outline-primary focus:outline-offset-2"
+                tabIndex={0}
+                onPointerDownCapture={() => workspaceRef.current?.focus({ preventScroll: true })}
+                onKeyDown={handleWorkspaceKeyDown}
+                onKeyUp={handleWorkspaceKeyUp}
+                style={{
+                  height: showHeading ? 'min(70vh, 520px)' : 'min(70vh, 420px)',
+                  maxHeight: '70vh',
+                  backgroundColor: visibleBackground,
+                }}
+                aria-label={`${side} image crop workspace. Arrow keys pan, plus and minus zoom.`}
+              >
+                {frameSize && (
+                  <Cropper
+                    key={`${source}:${areaWidth}:${areaHeight}:${initialAreaKey}`}
+                    image={source}
+                    crop={cropPosition}
+                    zoom={zoom}
+                    minZoom={MIN_ZOOM}
+                    maxZoom={MAX_ZOOM}
+                    zoomWithScroll={false}
+                    aspect={aspect}
+                    cropSize={frameSize}
+                    cropShape="rect"
+                    objectFit="contain"
+                    restrictPosition={false}
+                    showGrid={false}
+                    initialCroppedAreaPixels={crop}
+                    mediaProps={{
+                      alt: `${side} crop source`,
+                      onError: () =>
+                        onError(side, 'This image could not be loaded. Try another file.'),
+                    }}
+                    style={{
+                      containerStyle: { width: '100%', height: '100%' },
+                    }}
+                    onCropChange={setCropPosition}
+                    onZoomChange={(value) => {
+                      setZoom(value)
+                      setZoomInput(clampZoom(value).toFixed(2))
+                    }}
+                    onCropAreaChange={(_area, areaPixels) => {
+                      latestCrop.current = asCrop(areaPixels)
+                    }}
+                    onCropComplete={handleCropComplete}
+                    onMediaLoaded={handleMediaLoaded}
+                    onInteractionStart={() => {
+                      userActionInProgress.current = true
+                    }}
+                    onInteractionEnd={() => {
+                      userActionInProgress.current = false
+                    }}
+                  />
+                )}
+                {frameSize && bleedMode === 'COLOR' && (
+                  <div
+                    aria-hidden="true"
+                    className="crop-bleed-ring pointer-events-none absolute left-1/2 top-1/2 z-10"
+                    style={{
+                      width: frameSize.width,
+                      height: frameSize.height,
+                      boxSizing: 'border-box',
+                      boxShadow: `0 0 0 ${ringWidth}px ${card.bleedColor}`,
+                      transform: 'translate(-50%, -50%)',
+                    }}
+                  />
+                )}
+                {frameSize && bleedMode === 'IMAGE' && (
+                  <div
+                    aria-hidden="true"
+                    className="trim-line pointer-events-none absolute left-1/2 top-1/2 z-10"
+                    style={{
+                      width: frameSize.width - 2 * bleedInsetX,
+                      height: frameSize.height - 2 * bleedInsetY,
+                      transform: 'translate(-50%, -50%)',
+                    }}
+                  />
+                )}
+              </div>
+              <p className="mt-2 text-xs text-[#a3adc2]">
+                Click the image, then use your keyboard: arrow keys nudge the image (hold Shift for 10x). The + and - keys zoom by 0.1 (hold Shift for 0.01).
+              </p>
+              <div className="mt-4 max-w-[220px]">
+                <p className="mb-2 text-sm font-medium">
+                  {translate('cardEditor.liveResult')}
+                </p>
+                <CardFace
+                  card={card}
+                  side={side}
+                  cardSize={cardSize}
+                  showBleedRing={bleedMode === 'COLOR'}
+                  aspectIncludesBleed={bleedMode === 'IMAGE'}
+                  source={processedSource}
+                  placeholder={
+                    side === 'front' && source && !processedSource
+                      ? 'Crop required'
+                      : undefined
+                  }
+                  alt={`${side} live crop result`}
+                />
+              </div>
+            </>
+          ) : (
+            <div className="mx-auto max-w-[300px]">
+              <CardFace
+                card={card}
+                side={side}
+                cardSize={cardSize}
+                showBleedRing={bleedMode === 'COLOR'}
+                aspectIncludesBleed={bleedMode === 'IMAGE'}
+              />
+            </div>
+          )}
+        </div>
 
-      <div className="mb-3 flex flex-wrap items-center gap-4">
-        <label className="label cursor-pointer justify-start gap-2">
-          <input
-            className="checkbox checkbox-sm"
-            type="checkbox"
-            checked={background.enabled}
-            onChange={(event) => onBackgroundToggle(side, event.currentTarget.checked)}
-          />
-          <span className="label-text">Background</span>
-        </label>
-        {background.enabled && (
-          <label className="form-control w-fit">
-            <span className="label-text mb-1">Background color</span>
+        <div className="min-w-0 space-y-4">
+          <div className="flex flex-wrap items-center gap-2">
+            {isVector && source ? (
+              <span className="badge badge-neutral">Vector</span>
+            ) : dpi !== undefined ? (
+              <>
+                <span
+                  className={`badge ${isLowRes(dpi) ? 'badge-warning' : 'badge-success'}`}
+                >
+                  {formatNumber(dpi, locale, { maximumFractionDigits: 0 })} DPI
+                </span>
+                <span className="text-sm text-[#a3adc2]">
+                  {translate(
+                    isLowRes(dpi)
+                      ? 'cardEditor.dpi.low'
+                      : 'cardEditor.dpi.good',
+                  )}
+                </span>
+              </>
+            ) : null}
+          </div>
+
+          <div className="flex gap-2">
+            <button
+              className="btn min-h-11 flex-1 border border-[#2c3547] bg-[#1f2633]"
+              type="button"
+              onClick={() => setFraming('FIT')}
+              disabled={!mediaSize}
+            >
+              {translate('cardEditor.fit')}
+            </button>
+            <button
+              className="btn min-h-11 flex-1 border border-[#2c3547] bg-[#1f2633]"
+              type="button"
+              onClick={() => setFraming('FILL')}
+              disabled={!mediaSize}
+            >
+              {translate('cardEditor.fill')}
+            </button>
+            {showImageActions && (
+              <>
+                <input
+                  ref={imageInputRef}
+                  className="sr-only"
+                  type="file"
+                  accept=".png,.jpg,.jpeg,.webp,.gif,.bmp,.avif,.svg,image/*"
+                  aria-label={translate(replaceImageKey)}
+                  onChange={(event) => {
+                    const file = event.currentTarget.files?.[0]
+                    if (file) onImageSelect(side, file)
+                    event.currentTarget.value = ''
+                  }}
+                />
+                <button
+                  className="btn min-h-11 flex-1 border border-[#2c3547] bg-[#1f2633]"
+                  type="button"
+                  onClick={() => imageInputRef.current?.click()}
+                >
+                  {translate('cardEditor.replace')}
+                </button>
+              </>
+            )}
+          </div>
+          {showImageActions && (
+            <button
+              className="btn btn-outline min-h-11"
+              type="button"
+              disabled={!source}
+              onClick={() => {
+                if (imageInputRef.current) imageInputRef.current.value = ''
+                onImageRemove(side)
+              }}
+            >
+              {translate('cardEditor.removeImage')}
+            </button>
+          )}
+
+          <label className="form-control">
+            <span className="label-text mb-2">{translate('cardEditor.zoom')}</span>
             <input
-              className="input input-bordered h-12 w-20 p-1"
+              className="range range-primary range-sm min-h-11"
+              type="range"
+              min={MIN_ZOOM}
+              max={MAX_ZOOM}
+              step={FINE_ZOOM_STEP}
+              value={zoom}
+              onChange={(event) => handleZoomChange(Number(event.currentTarget.value))}
+              onPointerUp={finishZoomInteraction}
+              onKeyUp={finishZoomInteraction}
+              onBlur={finishZoomInteraction}
+              title={translate('cardEditor.zoom.slider')}
+              aria-label={translate('cardEditor.zoom.slider')}
+            />
+          </label>
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <button
+              className="btn h-11 min-h-11 w-11"
+              type="button"
+              aria-label={translate('cardEditor.zoom.outCoarse')}
+              title={translate('cardEditor.zoom.outCoarse')}
+              onClick={() => {
+                handleZoomChange(zoom - COARSE_ZOOM_STEP)
+                finishZoomInteraction()
+              }}
+            >
+              −
+            </button>
+            <button
+              className="btn h-11 min-h-11 w-11"
+              type="button"
+              aria-label={translate('cardEditor.zoom.inFine')}
+              title={translate('cardEditor.zoom.inFine')}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => {
+                handleZoomChange(zoom + FINE_ZOOM_STEP)
+                finishZoomInteraction()
+              }}
+            >
+              ▲
+            </button>
+            <button
+              className="btn h-11 min-h-11 w-11"
+              type="button"
+              aria-label={translate('cardEditor.zoom.outFine')}
+              title={translate('cardEditor.zoom.outFine')}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => {
+                handleZoomChange(zoom - FINE_ZOOM_STEP)
+                finishZoomInteraction()
+              }}
+            >
+              ▼
+            </button>
+            <input
+              className="input input-bordered zoom-number-input h-11 w-24 text-center"
+              type="number"
+              min={MIN_ZOOM}
+              max={MAX_ZOOM}
+              step={FINE_ZOOM_STEP}
+              aria-label={translate('cardEditor.zoom.exact')}
+              title={translate('cardEditor.zoom.exact')}
+              value={zoomInput}
+              onChange={(event) => setZoomInput(event.currentTarget.value)}
+              onBlur={commitZoomInput}
+              onKeyDown={(event) => {
+                if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+                  event.preventDefault()
+                  const step = event.shiftKey
+                    ? COARSE_ZOOM_STEP
+                    : FINE_ZOOM_STEP
+                  handleZoomChange(
+                    zoom + (event.key === 'ArrowDown' ? -step : step),
+                  )
+                } else if (event.key === 'Enter') {
+                  event.preventDefault()
+                  event.currentTarget.blur()
+                }
+              }}
+              onKeyUp={(event) => {
+                if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+                  finishZoomInteraction()
+                }
+              }}
+            />
+            <button
+              className="btn h-11 min-h-11 w-11"
+              type="button"
+              aria-label={translate('cardEditor.zoom.inCoarse')}
+              title={translate('cardEditor.zoom.inCoarse')}
+              onClick={() => {
+                handleZoomChange(zoom + COARSE_ZOOM_STEP)
+                finishZoomInteraction()
+              }}
+            >
+              +
+            </button>
+          </div>
+          <p className="text-xs text-[#a3adc2]">
+            {translate('cardEditor.zoom.steps')}
+          </p>
+
+          <label className="flex min-h-11 items-center gap-3 text-sm">
+            <input
+              className="checkbox checkbox-sm"
+              type="checkbox"
+              checked={background.enabled}
+              onChange={(event) => onBackgroundToggle(side, event.currentTarget.checked)}
+            />
+            <span>{translate('cardEditor.background')}</span>
+            <input
+              className="input input-bordered ml-auto h-11 w-12 p-1"
               type="color"
+              aria-label={translate('cardEditor.backgroundColor')}
               value={background.color}
               onChange={(event) => onBackgroundChange(side, event.currentTarget.value)}
             />
           </label>
-        )}
-      </div>
-
-      {showImageActions && (
-        <div className="mb-3 flex items-end gap-2">
-          <label className="form-control min-w-0 flex-1">
-            <span className="label-text mb-1">Upload {side} image</span>
-            <input
-              ref={imageInputRef}
-              className="file-input file-input-bordered w-full"
-              type="file"
-              accept=".png,.jpg,.jpeg,.webp,.gif,.bmp,.avif,.svg,image/*"
-              onChange={(event) => {
-                const file = event.currentTarget.files?.[0]
-                if (file) onImageSelect(side, file)
-                event.currentTarget.value = ''
-              }}
-            />
-          </label>
-          <button
-            className="btn btn-outline btn-error"
-            type="button"
-            disabled={!source}
-            onClick={() => {
-              if (imageInputRef.current) imageInputRef.current.value = ''
-              onImageRemove(side)
-            }}
-          >
-            Remove image
-          </button>
-        </div>
-      )}
-
-      {side === 'back' && source && crop && onUseBackForEveryCard && (
-        <button className="btn btn-outline mb-3" type="button" onClick={onUseBackForEveryCard}>
-          Use this back for every card
-        </button>
-      )}
-
-      {source ? (
-        <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(140px,220px)]">
-          <div>
-            <div
-              ref={workspaceRef}
-              className="cropper-workspace relative w-full overflow-hidden rounded-box focus:outline focus:outline-2 focus:outline-primary focus:outline-offset-2"
-              tabIndex={0}
-              onPointerDownCapture={() => workspaceRef.current?.focus({ preventScroll: true })}
-              onKeyDown={handleWorkspaceKeyDown}
-              onKeyUp={handleWorkspaceKeyUp}
-              style={{
-                height: 'min(70vh, 520px)',
-                maxHeight: '70vh',
-                backgroundColor: visibleBackground,
-              }}
-              aria-label={`${side} image crop workspace. Arrow keys pan, plus and minus zoom.`}
-            >
-              {frameSize && (
-                <Cropper
-                  key={`${source}:${areaWidth}:${areaHeight}:${initialAreaKey}`}
-                  image={source}
-                  crop={cropPosition}
-                  zoom={zoom}
-                  minZoom={MIN_ZOOM}
-                  maxZoom={MAX_ZOOM}
-                  zoomWithScroll={false}
-                  aspect={aspect}
-                  cropSize={frameSize}
-                  cropShape="rect"
-                  objectFit="contain"
-                  restrictPosition={false}
-                  showGrid={false}
-                  initialCroppedAreaPixels={crop}
-                  mediaProps={{
-                    alt: `${side} crop source`,
-                    onError: () =>
-                      onError(side, 'This image could not be loaded. Try another file.'),
-                  }}
-                  style={{
-                    containerStyle: { width: '100%', height: '100%' },
-                  }}
-                  onCropChange={setCropPosition}
-                  onZoomChange={(value) => {
-                    setZoom(value)
-                    setZoomInput(clampZoom(value).toFixed(2))
-                  }}
-                  onCropAreaChange={(_area, areaPixels) => {
-                    latestCrop.current = asCrop(areaPixels)
-                  }}
-                  onCropComplete={handleCropComplete}
-                  onMediaLoaded={handleMediaLoaded}
-                  onInteractionStart={() => {
-                    userActionInProgress.current = true
-                  }}
-                  onInteractionEnd={() => {
-                    userActionInProgress.current = false
-                  }}
-                />
-              )}
-              {frameSize && bleedMode === 'COLOR' && (
-                <div
-                  aria-hidden="true"
-                  className="crop-bleed-ring pointer-events-none absolute left-1/2 top-1/2 z-10"
-                  style={{
-                    width: frameSize.width,
-                    height: frameSize.height,
-                    boxSizing: 'border-box',
-                    boxShadow: `0 0 0 ${ringWidth}px ${card.bleedColor}`,
-                    transform: 'translate(-50%, -50%)',
-                  }}
-                />
-              )}
-              {frameSize && bleedMode === 'IMAGE' && (
-                <div
-                  aria-hidden="true"
-                  className="trim-line pointer-events-none absolute left-1/2 top-1/2 z-10"
-                  style={{
-                    width: frameSize.width - 2 * bleedInsetX,
-                    height: frameSize.height - 2 * bleedInsetY,
-                    transform: 'translate(-50%, -50%)',
-                  }}
-                />
-              )}
-            </div>
-            <p className="mt-1 text-xs text-base-content/60">
-              Click the image, then use your keyboard: arrow keys nudge the image (hold Shift for 10x). The + and - keys zoom by 0.1 (hold Shift for 0.01).
+          {extraControls}
+          {source && error && (
+            <p role="alert" className="text-sm text-error">
+              {error}
             </p>
-
-            <div className="mt-3 flex flex-wrap items-center gap-3">
-              <button
-                className="btn btn-sm btn-outline"
-                type="button"
-                onClick={() => setFraming('FILL')}
-                disabled={!mediaSize}
-              >
-                Fill
-              </button>
-              <button
-                className="btn btn-sm btn-outline"
-                type="button"
-                onClick={() => setFraming('FIT')}
-                disabled={!mediaSize}
-              >
-                Fit
-              </button>
-              <label className="form-control min-w-40 flex-1">
-                <span className="label-text mb-1">Zoom</span>
-                <input
-                  className="range range-primary range-sm"
-                  type="range"
-                  min={MIN_ZOOM}
-                  max={MAX_ZOOM}
-                  step={FINE_ZOOM_STEP}
-                  value={zoom}
-                  onChange={(event) => handleZoomChange(Number(event.currentTarget.value))}
-                  onPointerUp={finishZoomInteraction}
-                  onKeyUp={finishZoomInteraction}
-                  onBlur={finishZoomInteraction}
-                  title="Zoom. Left/Right arrow keys: 0.01."
-                  aria-label="Zoom. Left/Right arrow keys: 0.01."
-                />
-              </label>
-              <div className="flex min-w-0 flex-col items-center">
-                <div className="join">
-                  <button
-                    className="btn btn-sm join-item"
-                    type="button"
-                    aria-label="Zoom out by 0.1"
-                    title="Zoom out by 0.1"
-                    onClick={() => {
-                      handleZoomChange(zoom - COARSE_ZOOM_STEP)
-                      finishZoomInteraction()
-                    }}
-                  >
-                    −
-                  </button>
-                  <div className="relative">
-                    <input
-                      className="input input-bordered input-sm zoom-number-input w-24 pr-7 text-center"
-                      type="number"
-                      min={MIN_ZOOM}
-                      max={MAX_ZOOM}
-                      step={FINE_ZOOM_STEP}
-                      aria-label="Type an exact zoom value. Up/Down keys: 0.01 (Shift: 0.1)."
-                      title="Type an exact zoom value. Up/Down keys: 0.01 (Shift: 0.1)."
-                      value={zoomInput}
-                      onChange={(event) => setZoomInput(event.currentTarget.value)}
-                      onBlur={commitZoomInput}
-                      onKeyDown={(event) => {
-                        if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
-                          event.preventDefault()
-                          const step = event.shiftKey
-                            ? COARSE_ZOOM_STEP
-                            : FINE_ZOOM_STEP
-                          handleZoomChange(
-                            zoom + (event.key === 'ArrowDown' ? -step : step),
-                          )
-                        } else if (event.key === 'Enter') {
-                          event.preventDefault()
-                          event.currentTarget.blur()
-                        }
-                      }}
-                      onKeyUp={(event) => {
-                        if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
-                          finishZoomInteraction()
-                        }
-                      }}
-                    />
-                    <span className="absolute inset-y-0 right-0 flex w-6 flex-col border-l border-base-300">
-                      <button
-                        className="flex h-1/2 flex-1 items-center justify-center text-[9px] leading-none hover:bg-base-200"
-                        type="button"
-                        aria-label="Zoom in by 0.01"
-                        title="Zoom in by 0.01"
-                        onMouseDown={(event) => event.preventDefault()}
-                        onClick={() => {
-                          handleZoomChange(zoom + FINE_ZOOM_STEP)
-                          finishZoomInteraction()
-                        }}
-                      >
-                        ▲
-                      </button>
-                      <button
-                        className="flex h-1/2 flex-1 items-center justify-center text-[9px] leading-none hover:bg-base-200"
-                        type="button"
-                        aria-label="Zoom out by 0.01"
-                        title="Zoom out by 0.01"
-                        onMouseDown={(event) => event.preventDefault()}
-                        onClick={() => {
-                          handleZoomChange(zoom - FINE_ZOOM_STEP)
-                          finishZoomInteraction()
-                        }}
-                      >
-                        ▼
-                      </button>
-                    </span>
-                  </div>
-                  <button
-                    className="btn btn-sm join-item"
-                    type="button"
-                    aria-label="Zoom in by 0.1"
-                    title="Zoom in by 0.1"
-                    onClick={() => {
-                      handleZoomChange(zoom + COARSE_ZOOM_STEP)
-                      finishZoomInteraction()
-                    }}
-                  >
-                    +
-                  </button>
-                </div>
-                <p className="max-w-[15rem] break-words text-center text-[10px] leading-tight text-base-content/60">
-                  - / + : 0.1 steps   ▲ / ▼ : 0.01 steps (fine)
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div className="min-w-0">
-            <p className="mb-2 text-sm font-medium">Live result</p>
-            <CardFace
-              card={card}
-              side={side}
-              cardSize={cardSize}
-              showBleedRing={bleedMode === 'COLOR'}
-              aspectIncludesBleed={bleedMode === 'IMAGE'}
-              source={processedSource}
-              placeholder={
-                side === 'front' && source && !processedSource ? 'Crop required' : undefined
-              }
-              alt={`${side} live crop result`}
-            />
-          </div>
+          )}
         </div>
-      ) : (
-        <div className="mx-auto max-w-[300px]">
-          <CardFace
-            card={card}
-            side={side}
-            cardSize={cardSize}
-            showBleedRing={bleedMode === 'COLOR'}
-            aspectIncludesBleed={bleedMode === 'IMAGE'}
-            placeholder={
-              side === 'front' && source && !processedSource ? 'Crop required' : undefined
-            }
-          />
-        </div>
-      )}
-
-      {source && dpi !== undefined && isLowRes(dpi) && (
-        <p className="mt-2 text-sm text-warning">
-          This crop is below 200 DPI and may print blurry.
-        </p>
-      )}
-      {source && error && (
-        <p role="alert" className="mt-2 text-sm text-error">
-          {error}
-        </p>
-      )}
+      </div>
     </section>
   )
 }
