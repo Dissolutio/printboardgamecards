@@ -7,6 +7,8 @@ type QuantityDirection = -1 | 1
 type QuantityStepperProps = {
   quantity: number
   cardLabel: string
+  decreaseLabel?: string
+  increaseLabel?: string
   disabled?: boolean
   onStep: (direction: QuantityDirection) => void
 }
@@ -14,17 +16,19 @@ type QuantityStepperProps = {
 export default function QuantityStepper({
   quantity,
   cardLabel,
+  decreaseLabel,
+  increaseLabel,
   disabled = false,
   onStep,
 }: QuantityStepperProps) {
   return (
     <div className="join join-sm" role="group" aria-label={`${cardLabel} copy count`}>
       <button
-        className="btn btn-xs join-item"
+        className="btn join-item h-11 min-h-11"
         type="button"
         disabled={disabled}
-        aria-label={`Decrease ${cardLabel} copies`}
-        title={`Decrease ${cardLabel} copies`}
+        aria-label={decreaseLabel ?? `Decrease ${cardLabel} copies`}
+        title={decreaseLabel ?? `Decrease ${cardLabel} copies`}
         onClick={() => onStep(-1)}
       >
         −
@@ -36,11 +40,11 @@ export default function QuantityStepper({
         {quantityLabel(quantity)}
       </output>
       <button
-        className="btn btn-xs join-item"
+        className="btn join-item h-11 min-h-11"
         type="button"
         disabled={disabled}
-        aria-label={`Increase ${cardLabel} copies`}
-        title={`Increase ${cardLabel} copies`}
+        aria-label={increaseLabel ?? `Increase ${cardLabel} copies`}
+        title={increaseLabel ?? `Increase ${cardLabel} copies`}
         onClick={() => onStep(1)}
       >
         +

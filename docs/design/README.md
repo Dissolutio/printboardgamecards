@@ -19,6 +19,17 @@ Flow: Start -> Workspace. Select a card -> Editor dialog -> Done -> Workspace. "
 
 The Start screen's "Have your own PDF?" tile opens the "Adjust my PDF" dialog. The dialog uses the shared printer profiles and offers Letter or A4 paper with a card size preset. It shows the calibration flow before the PDF controls. Users can select or drop a PDF, set whether page 1 is a front, and download a local adjusted copy. The dialog fills the phone screen and keeps all controls at least 44 px high.
 
+## Card editor dialog
+
+Select a card in the workspace grid to open its editor dialog. Automatic card selection does not open the dialog.
+The dialog shows the selected card position, copy count, previous and next card controls, and Front and Back tabs.
+The active tab stays selected while moving between cards. Opening the dialog selects Front.
+Only the active side crop workspace is mounted. Dialog navigation and tab changes do not change crops or processed images.
+The dialog keeps image replacement, crop, background, resolution, bleed, and error controls.
+Use the back panel to apply the selected back to every card. Other cards keep their own fronts.
+Duplicate keeps the dialog open on the new card. Delete asks for confirmation and closes the dialog after deletion.
+Done, Close, and Escape close the dialog. The phone dialog fills the screen and keeps its header, tabs, and footer visible.
+
 ## Tokens
 
 | Token | Value |

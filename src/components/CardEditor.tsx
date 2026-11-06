@@ -1,12 +1,19 @@
+import type { ReactNode } from 'react'
 import { SideCrop } from './SideCrop.tsx'
 import type { Size } from '../lib/geometry.ts'
 import { DEFAULT_BLEED } from '../lib/geometry.ts'
 import { cropAreaSize } from '../lib/crop.ts'
 import { withBackgroundEnabled } from '../lib/piece.ts'
 import type { BleedMode, Card, CardSide, PixelCropRect } from '../types.ts'
+import { createTranslator } from '../i18n/messages.ts'
+import { en } from '../i18n/en.ts'
+
+const translate = createTranslator(en, 'en')
 
 type CardEditorProps = {
   card: Card
+  side: CardSide
+  backPanel?: ReactNode
   cardSize: Size
   errors: Record<CardSide, string | undefined>
   onCardChange: (card: Card) => void
@@ -22,11 +29,12 @@ type CardEditorProps = {
     source: string,
   ) => void
   onError: (side: CardSide, message: string | undefined) => void
-  onUseBackForEveryCard: () => void
 }
 
 export default function CardEditor({
   card,
+  side,
+  backPanel,
   cardSize,
   errors,
   onCardChange,
@@ -36,58 +44,79 @@ export default function CardEditor({
   onCropChange,
   onProcessedImage,
   onError,
-  onUseBackForEveryCard,
 }: CardEditorProps) {
   const area = cropAreaSize(cardSize, DEFAULT_BLEED, card.bleedMode)
+  const source = side === 'front' ? card.frontSrc : card.backSrc
+  const isVector = side === 'front' ? card.frontIsVector : card.backIsVector
+  const processedSource =
+    side === 'front' ? card.frontProcessedSrc : card.backProcessedSrc
+  const crop = side === 'front' ? card.frontCrop : card.backCrop
+  const backgroundKey = side === 'front' ? 'frontBackground' : 'backBackground'
+  const sideBackground = card[backgroundKey]
 
   return (
-    <div className="space-y-6">
-      <section className="rounded-box border border-base-300 bg-base-100 p-5">
-        <div className="grid gap-4 sm:grid-cols-2">
-          <p className="self-center text-sm text-base-content/60">
-            Card size: {cardSize.width} × {cardSize.height} pt trim
-          </p>
-          <label className="form-control">
-            <span className="label-text mb-1">Copies of this card</span>
-            <input
-              className="input input-bordered w-full"
-              type="number"
-              min={1}
-              step={1}
-              value={card.quantity}
-              onChange={(event) => {
-                const quantity = Number(event.currentTarget.value)
-                if (Number.isInteger(quantity) && quantity >= 1) {
-                  onCardChange({ ...card, quantity })
-                }
-              }}
-            />
-          </label>
-        </div>
-        <fieldset className="mt-4">
-          <legend className="mb-2 text-sm font-medium">Bleed mode for this card</legend>
-          <div className="join">
+    <div className="space-y-4">
+      <SideCrop
+        key={`${side}-${source ?? 'empty'}`}
+        card={card}
+        side={side}
+        source={source ?? ''}
+        isVector={isVector ?? false}
+        processedSource={processedSource}
+        crop={crop}
+        cardSize={cardSize}
+        areaWidth={area.width}
+        areaHeight={area.height}
+        bleedMode={card.bleedMode}
+        bleed={DEFAULT_BLEED}
+        background={sideBackground}
+        error={errors[side]}
+        showHeading={false}
+        extraControls={backPanel}
+        onImageSelect={onImageSelect}
+        onImageRemove={onImageRemove}
+        onCropChange={onCropChange}
+        onProcessedImage={onProcessedImage}
+        onError={onError}
+        onBackgroundToggle={(selectedSide, enabled) => {
+          const key = selectedSide === 'front' ? 'frontBackground' : 'backBackground'
+          onCardChange({
+            ...card,
+            [key]: withBackgroundEnabled(card[key], enabled),
+          })
+        }}
+        onBackgroundChange={(selectedSide, color) => {
+          const key = selectedSide === 'front' ? 'frontBackground' : 'backBackground'
+          onCardChange({ ...card, [key]: { ...card[key], color } })
+        }}
+      />
+
+      <section className="rounded-xl border border-[#2c3547] bg-[#1f2633] p-4">
+        <h3 className="mb-3 text-sm font-semibold">{translate('cardEditor.bleed.title')}</h3>
+        <fieldset>
+          <legend className="sr-only">{translate('cardEditor.bleed.mode')}</legend>
+          <div className="flex flex-wrap gap-2">
             <button
-              className={`btn join-item ${card.bleedMode === 'IMAGE' ? 'btn-primary' : 'btn-outline'}`}
+              className={`btn min-h-11 ${card.bleedMode === 'IMAGE' ? 'btn-primary' : 'btn-outline'}`}
               type="button"
               aria-pressed={card.bleedMode === 'IMAGE'}
               onClick={() => onBleedModeChange(card.id, 'IMAGE')}
             >
-              Extend image
+              {translate('cardEditor.bleed.extendImage')}
             </button>
             <button
-              className={`btn join-item ${card.bleedMode === 'COLOR' ? 'btn-primary' : 'btn-outline'}`}
+              className={`btn min-h-11 ${card.bleedMode === 'COLOR' ? 'btn-primary' : 'btn-outline'}`}
               type="button"
               aria-pressed={card.bleedMode === 'COLOR'}
               onClick={() => onBleedModeChange(card.id, 'COLOR')}
             >
-              Solid color
+              {translate('cardEditor.bleed.solidColor')}
             </button>
           </div>
         </fieldset>
         {card.bleedMode === 'COLOR' && (
-          <label className="form-control mt-4 w-fit">
-            <span className="label-text mb-1">Bleed color</span>
+          <label className="form-control mt-3 w-fit">
+            <span className="label-text mb-1">{translate('cardEditor.bleed.color')}</span>
             <input
               className="input input-bordered h-12 w-20 p-1"
               type="color"
@@ -98,58 +127,22 @@ export default function CardEditor({
             />
           </label>
         )}
-        <p className="mt-3 text-sm text-base-content/60">
-          {DEFAULT_BLEED} pt bleed · Crop area {area.width} × {area.height} pt
+        <p className="mt-3 text-sm text-[#a3adc2]">
+          {translate('cardEditor.bleed.summary', { bleed: DEFAULT_BLEED })}
+        </p>
+        <p className="text-sm text-[#a3adc2]">
+          {translate('cardEditor.bleed.cropArea', {
+            width: area.width,
+            height: area.height,
+          })}
+        </p>
+        <p className="text-sm text-[#a3adc2]">
+          {translate('cardEditor.bleed.cardSize', {
+            width: cardSize.width,
+            height: cardSize.height,
+          })}
         </p>
       </section>
-
-      <div className="space-y-6">
-        {(['front', 'back'] as const).map((side) => {
-          const source = side === 'front' ? card.frontSrc : card.backSrc
-          const isVector = side === 'front' ? card.frontIsVector : card.backIsVector
-          const processedSource =
-            side === 'front' ? card.frontProcessedSrc : card.backProcessedSrc
-          const crop = side === 'front' ? card.frontCrop : card.backCrop
-          const backgroundKey = side === 'front' ? 'frontBackground' : 'backBackground'
-          const sideBackground = card[backgroundKey]
-
-          return (
-            <SideCrop
-              key={`${side}-${source ?? 'empty'}`}
-              card={card}
-              side={side}
-              source={source ?? ''}
-              isVector={isVector ?? false}
-              processedSource={processedSource}
-              crop={crop}
-              cardSize={cardSize}
-              areaWidth={area.width}
-              areaHeight={area.height}
-              bleedMode={card.bleedMode}
-              bleed={DEFAULT_BLEED}
-              background={sideBackground}
-              error={errors[side]}
-              onImageSelect={onImageSelect}
-              onImageRemove={onImageRemove}
-              onCropChange={onCropChange}
-              onProcessedImage={onProcessedImage}
-              onError={onError}
-              onUseBackForEveryCard={onUseBackForEveryCard}
-              onBackgroundToggle={(selectedSide, enabled) => {
-                const key = selectedSide === 'front' ? 'frontBackground' : 'backBackground'
-                onCardChange({
-                  ...card,
-                  [key]: withBackgroundEnabled(card[key], enabled),
-                })
-              }}
-              onBackgroundChange={(selectedSide, color) => {
-                const key = selectedSide === 'front' ? 'frontBackground' : 'backBackground'
-                onCardChange({ ...card, [key]: { ...card[key], color } })
-              }}
-            />
-          )
-        })}
-      </div>
     </div>
   )
 }

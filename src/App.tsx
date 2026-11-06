@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import StartScreen from './components/StartScreen.tsx'
 import AdjustPdfDialog from './components/AdjustPdfDialog.tsx'
 import CalibrationPanel from './components/CalibrationPanel.tsx'
+import CardEditorDialog from './components/CardEditorDialog.tsx'
 import CardList from './components/CardList.tsx'
 import { Dialog } from './components/Dialog.tsx'
 import ExportPanel from './components/ExportPanel.tsx'
@@ -94,6 +95,7 @@ function App() {
   const [deckMenuOpen, setDeckMenuOpen] = useState(false)
   const [downloadDialogOpen, setDownloadDialogOpen] = useState(false)
   const [calibrationDialogOpen, setCalibrationDialogOpen] = useState(false)
+  const [cardEditorOpen, setCardEditorOpen] = useState(false)
   const [adjustPdfDialogOpen, setAdjustPdfDialogOpen] = useState(false)
   const [adjustPdfPaperName, setAdjustPdfPaperName] =
     useState<PaperName>(paperName)
@@ -166,23 +168,16 @@ function App() {
     cardsRef,
     selectedId,
     setSelectedId,
-    errors,
     setErrors,
     replaceCards,
     releaseUnusedUrls,
     beginCardOperation,
     isCurrentCardOperation,
-    updateCard,
     handleQuantityStep,
     handleAddCard,
     handleDuplicateCard,
     handleDeleteCard,
-    handleImageSelect,
-    handleImageRemove,
-    handleCropChange,
     handleUseBackForEveryCard,
-    handleProcessedImage,
-    handleError,
   } = cardState
   const [screen, setScreen] = useState<AppScreen>(() => chooseScreen(cards))
   const currentScreen = chooseScreen(cards) === 'workspace' ? 'workspace' : screen
@@ -296,6 +291,21 @@ function App() {
     handleDeletePrinter,
   } = printer
   const selectedCard = cards.find((card) => card.id === selectedId)
+  function selectCard(cardId: string) {
+    setSelectedId(cardId)
+    setErrors({ front: undefined, back: undefined })
+  }
+  async function handleConfirmedCardDelete(cardId: string) {
+    const confirmed = await confirm({
+      title: translate('cardEditor.delete.title'),
+      message: translate('cardEditor.delete.message'),
+      confirmLabel: translate('cardEditor.delete.confirm'),
+      destructive: true,
+    })
+    if (!confirmed) return
+    handleDeleteCard(cardId)
+    setCardEditorOpen(false)
+  }
   const pageCount =
     exportMode === 'PRINT_GLUE'
       ? layoutPrintAndGlue(cards, tightGrid).length
@@ -721,7 +731,7 @@ function App() {
           onAdjustPdf={() => setAdjustPdfDialogOpen(true)}
         />
       ) : (
-        <main className="min-h-screen bg-base-200 text-base-content">
+        <main className="min-h-screen overflow-x-clip bg-base-200 text-base-content">
           <header className="flex flex-wrap items-center gap-3 border-b border-base-300 px-4 py-3 sm:px-8">
             <div className="flex min-w-0 flex-1 basis-full items-center gap-3 sm:basis-auto">
               <svg
@@ -878,12 +888,12 @@ function App() {
                 disabled={isProjectControlsDisabled}
                 onAdd={handleAddCard}
                 onSelect={(cardId) => {
-                  setSelectedId(cardId)
-                  setErrors({ front: undefined, back: undefined })
+                  selectCard(cardId)
+                  setCardEditorOpen(true)
                 }}
                 onQuantityStep={handleQuantityStep}
                 onDuplicate={handleDuplicateCard}
-                onDelete={handleDeleteCard}
+                onDelete={(cardId) => void handleConfirmedCardDelete(cardId)}
                 onChangeEveryBack={() => void handleUseBackForEveryCard()}
               />
 
@@ -956,19 +966,7 @@ function App() {
             </div>
 
             <div className="mx-auto max-w-[1440px] space-y-6 px-8 pb-8 max-[699px]:px-4">
-              <SelectedCardEditor
-                card={selectedCard}
-                cardSize={cardSize}
-                errors={errors}
-                onCardChange={updateCard}
-                onBleedModeChange={handleBleedModeChange}
-                onImageSelect={handleImageSelect}
-                onImageRemove={handleImageRemove}
-                onCropChange={handleCropChange}
-                onProcessedImage={handleProcessedImage}
-                onError={handleError}
-                onUseBackForEveryCard={handleUseBackForEveryCard}
-              />
+              <SelectedCardEditor card={selectedCard} />
 
               <div className="scroll-mt-24" id="print-preview">
                 <PrintPreview
@@ -995,6 +993,17 @@ function App() {
           </div>
         </main>
       )}
+
+      <CardEditorDialog
+        open={cardEditorOpen}
+        onClose={() => setCardEditorOpen(false)}
+        cardState={cardState}
+        cardSize={cardSize}
+        disabled={isProjectControlsDisabled}
+        onSelect={selectCard}
+        onBleedModeChange={handleBleedModeChange}
+        onDelete={(cardId) => void handleConfirmedCardDelete(cardId)}
+      />
 
       <input
         ref={openProjectFileInput}
