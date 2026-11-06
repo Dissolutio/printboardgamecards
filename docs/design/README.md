@@ -15,6 +15,10 @@ The owner approved this design. The app should look and flow exactly like it.
 
 Flow: Start -> Workspace. Select a card -> Editor dialog -> Done -> Workspace. "See the pages" -> Preview -> "Back to cards". The Start panel is a flow, not a section that stays open on the Workspace.
 
+## Adjust an existing PDF
+
+The Start screen's "Have your own PDF?" tile opens the "Adjust my PDF" dialog. The dialog uses the shared printer profiles and offers Letter or A4 paper with a card size preset. It shows the calibration flow before the PDF controls. Users can select or drop a PDF, set whether page 1 is a front, and download a local adjusted copy. The dialog fills the phone screen and keeps all controls at least 44 px high.
+
 ## Tokens
 
 | Token | Value |

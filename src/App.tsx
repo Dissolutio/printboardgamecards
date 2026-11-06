@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import StartScreen from './components/StartScreen.tsx'
+import AdjustPdfDialog from './components/AdjustPdfDialog.tsx'
 import CalibrationPanel from './components/CalibrationPanel.tsx'
 import CardList from './components/CardList.tsx'
 import { Dialog } from './components/Dialog.tsx'
@@ -10,15 +11,19 @@ import SelectedCardEditor from './components/SelectedCardEditor.tsx'
 import SummaryStrip from './components/SummaryStrip.tsx'
 import Toast from './components/Toast.tsx'
 import { useConfirm } from './components/useConfirm.tsx'
+import { pdf } from '@react-pdf/renderer'
+import CalibrationDoc from './pdf/CalibrationDoc.tsx'
 import { useCards } from './hooks/useCards.ts'
 import { prepareSideCrop, useProjectIo } from './hooks/useProjectIo.tsx'
 import { usePrinterProfiles } from './hooks/usePrinterProfiles.ts'
 import {
   useSettings,
+  type PaperName,
   type PresetName,
 } from './hooks/useSettings.ts'
 import {
   createCard,
+  downloadBlob,
   sideProcessedSource,
   sideSource,
   withSideCrop,
@@ -52,6 +57,11 @@ import { createTranslator } from './i18n/messages.ts'
 import { en } from './i18n/en.ts'
 import { formatNumber } from './i18n/numbers.ts'
 import type { HistorySettings } from './lib/history.ts'
+import {
+  AdjustPdfError,
+  adjustDuplexPdf,
+  type AdjustPdfErrorCode,
+} from './lib/adjustDuplexPdf.ts'
 
 const SIDES: CardSide[] = ['front', 'back']
 const PAPER_OPTIONS: (keyof typeof PAPER)[] = ['LETTER', 'A4']
@@ -84,6 +94,22 @@ function App() {
   const [deckMenuOpen, setDeckMenuOpen] = useState(false)
   const [downloadDialogOpen, setDownloadDialogOpen] = useState(false)
   const [calibrationDialogOpen, setCalibrationDialogOpen] = useState(false)
+  const [adjustPdfDialogOpen, setAdjustPdfDialogOpen] = useState(false)
+  const [adjustPdfPaperName, setAdjustPdfPaperName] =
+    useState<PaperName>(paperName)
+  const [adjustPdfPresetName, setAdjustPdfPresetName] =
+    useState<PresetName>('POKER')
+  const [adjustPdfFile, setAdjustPdfFile] = useState<File | null>(null)
+  const [adjustPdfFirstPageIsFront, setAdjustPdfFirstPageIsFront] = useState(true)
+  const [adjustPdfIsRunning, setAdjustPdfIsRunning] = useState(false)
+  const [adjustPdfErrorCode, setAdjustPdfErrorCode] =
+    useState<AdjustPdfErrorCode>()
+  const [adjustPdfSheetError, setAdjustPdfSheetError] = useState<string>()
+  const [adjustPdfResult, setAdjustPdfResult] = useState<{
+    href: string
+    fileName: string
+    shiftedPageCount: number
+  }>()
   const [toastMessage, setToastMessage] = useState<string>()
   const toastTimer = useRef<number | undefined>(undefined)
   const historyBusyRef = useRef(false)
@@ -221,6 +247,12 @@ function App() {
       if (toastTimer.current !== undefined) window.clearTimeout(toastTimer.current)
     },
     [],
+  )
+  useEffect(
+    () => () => {
+      if (adjustPdfResult?.href) URL.revokeObjectURL(adjustPdfResult.href)
+    },
+    [adjustPdfResult?.href],
   )
 
   const paper = PAPER[paperName]
@@ -593,6 +625,81 @@ function App() {
     showUndoToast('undo.toast.starterDeckCreated')
   }
 
+  function handleSelectAdjustPdf(file: File | null) {
+    setAdjustPdfResult(undefined)
+    setAdjustPdfErrorCode(undefined)
+    setAdjustPdfSheetError(undefined)
+    if (
+      file &&
+      file.type.toLowerCase() !== 'application/pdf' &&
+      !/\.pdf$/i.test(file.name)
+    ) {
+      setAdjustPdfFile(null)
+      setAdjustPdfErrorCode('NOT_A_PDF')
+      return
+    }
+    setAdjustPdfFile(file)
+  }
+
+  async function handleAdjustPdf() {
+    if (!adjustPdfFile) return
+    setAdjustPdfIsRunning(true)
+    setAdjustPdfErrorCode(undefined)
+    setAdjustPdfResult(undefined)
+    try {
+      const input = new Uint8Array(await adjustPdfFile.arrayBuffer())
+      const result = await adjustDuplexPdf(input, {
+        offsetXmm: activeProfile.offsetXmm,
+        offsetYmm: activeProfile.offsetYmm,
+        firstPageIsFront: adjustPdfFirstPageIsFront,
+      })
+      const bytes = result.bytes.slice()
+      const blob = new Blob([bytes.buffer as ArrayBuffer], {
+        type: 'application/pdf',
+      })
+      setAdjustPdfResult({
+        href: URL.createObjectURL(blob),
+        fileName: AdjustPdfDialog.adjustedPdfFilename(adjustPdfFile.name),
+        shiftedPageCount: result.shiftedPages.length,
+      })
+    } catch (error) {
+      setAdjustPdfErrorCode(
+        error instanceof AdjustPdfError ? error.code : 'NOT_A_PDF',
+      )
+    } finally {
+      setAdjustPdfIsRunning(false)
+    }
+  }
+
+  async function handleDownloadAdjustPdfCalibration(
+    nextPaperName: PaperName,
+    nextPresetName: PresetName,
+  ) {
+    setIsExporting(true)
+    setAdjustPdfSheetError(undefined)
+    try {
+      const paper = PAPER[nextPaperName]
+      const cardSize = CARD_PRESETS[nextPresetName]
+      const grid = calculateGrid({ paper, card: cardSize, bleed: DEFAULT_BLEED })
+      const calibrationSheet = await pdf(
+        <CalibrationDoc
+          paper={paper}
+          cardSize={cardSize}
+          grid={grid}
+          calibration={exportCalibrationPt('CALIBRATED', activeProfile)}
+        />,
+      ).toBlob()
+      downloadBlob(
+        calibrationSheet,
+        `printboard-calibration-${nextPaperName.toLowerCase()}.pdf`,
+      )
+    } catch {
+      setAdjustPdfSheetError(translate('adjustPdf.calibration.error'))
+    } finally {
+      setIsExporting(false)
+    }
+  }
+
   return (
     <>
       {currentScreen === 'start' ? (
@@ -611,6 +718,7 @@ function App() {
           onOpenProject={handleLoadProject}
           projectFileInput={projectFileInput}
           onStartWithOneCard={() => setScreen('workspace')}
+          onAdjustPdf={() => setAdjustPdfDialogOpen(true)}
         />
       ) : (
         <main className="min-h-screen bg-base-200 text-base-content">
@@ -985,6 +1093,52 @@ function App() {
           onCommitCalibrationAxis={commitCalibrationAxis}
         />
       </Dialog>
+
+      <AdjustPdfDialog
+        open={adjustPdfDialogOpen}
+        onClose={() => setAdjustPdfDialogOpen(false)}
+        paperName={adjustPdfPaperName}
+        onPaperNameChange={setAdjustPdfPaperName}
+        presetName={adjustPdfPresetName}
+        onPresetNameChange={setAdjustPdfPresetName}
+        calibration={{
+          disabled: isProjectControlsDisabled,
+          printMode,
+          printerProfiles,
+          activeProfile,
+          scaleGapInput,
+          setScaleGapInput,
+          setRulerDistanceInput,
+          rulerDistanceInput,
+          observedXmm,
+          setObservedXmm,
+          observedYmm,
+          setObservedYmm,
+          calibrationUpdated,
+          setCalibrationUpdated,
+          calibrationDraft,
+          setCalibrationDraft,
+          calibrationStorageWarning,
+          isExporting: isProjectControlsDisabled,
+          onSelectPrinter: handleSelectPrinter,
+          onAddPrinter: handleAddPrinter,
+          onRenamePrinter: handleRenamePrinter,
+          onDeletePrinter: handleDeletePrinter,
+          onResetCalibration: resetCalibration,
+          onApplyObservedCorrection: applyObservedCorrection,
+          onCommitCalibrationAxis: commitCalibrationAxis,
+        }}
+        onDownloadCalibrationSheet={handleDownloadAdjustPdfCalibration}
+        calibrationError={adjustPdfSheetError}
+        file={adjustPdfFile}
+        onFileSelect={handleSelectAdjustPdf}
+        firstPageIsFront={adjustPdfFirstPageIsFront}
+        onFirstPageIsFrontChange={setAdjustPdfFirstPageIsFront}
+        onAdjust={handleAdjustPdf}
+        isAdjusting={adjustPdfIsRunning}
+        result={adjustPdfResult}
+        errorCode={adjustPdfErrorCode}
+      />
 
       {confirmDialog}
       {toastMessage && (

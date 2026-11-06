@@ -1,9 +1,44 @@
 import type { Catalog } from './messages.ts'
 
 export const en: Catalog = {
+  'start.adjustPdf.title': 'Have your own PDF?',
+  'start.adjustPdf.description':
+    'Calibrate your printer, then upload your two-sided PDF. We shift the back pages to match your printer.',
+  'start.adjustPdf.button': 'Adjust my PDF',
+  'adjustPdf.dialog.title': 'Adjust my PDF',
+  'adjustPdf.close': 'Close',
+  'adjustPdf.paper.label': 'Calibration paper size',
+  'adjustPdf.cardSize.label': 'Calibration card size',
+  'adjustPdf.cardSize.poker': 'Poker',
+  'adjustPdf.cardSize.bridge': 'Bridge',
+  'adjustPdf.cardSize.mini': 'Mini',
+  'adjustPdf.cardSize.tarot': 'Tarot',
+  'adjustPdf.file.label': 'Two-sided PDF',
+  'adjustPdf.file.prompt': 'Drop a PDF here or choose a file.',
+  'adjustPdf.file.choose': 'Choose PDF',
+  'adjustPdf.file.empty': 'Choose a PDF file to adjust.',
+  'adjustPdf.firstPageIsFront': 'Page 1 is a front',
+  'adjustPdf.note.pages.front':
+    'Back pages are pages 2, 4, 6, and the later even pages.',
+  'adjustPdf.note.pages.back':
+    'Back pages are pages 1, 3, 5, and the later odd pages.',
+  'adjustPdf.note.offset':
+    'We move every back page by {x} mm horizontally and {y} mm vertically. Front pages do not change. Your file stays on your device.',
+  'adjustPdf.noCorrection':
+    'Your printer profile has no correction yet. Run the calibration first, or download an unchanged copy.',
+  'adjustPdf.adjust.button': 'Adjust PDF',
+  'adjustPdf.adjust.working': 'Adjusting PDF.',
+  'adjustPdf.adjust.testSheet':
+    'This moves the back pages. It cannot fix a printer that turns the paper at an angle. Print one test sheet before a big job.',
+  'adjustPdf.success.summary': {
+    one: 'Moved {count} back page.',
+    other: 'Moved {count} back pages.',
+  },
+  'adjustPdf.calibration.error':
+    'The calibration sheet could not be created. Try again.',
   'adjustPdf.error.notAPdf': 'This file is not a valid PDF. Choose a PDF file and try again.',
   'adjustPdf.error.encrypted':
-    'This PDF needs a password. Choose a PDF that does not need a password.',
+    'This PDF needs a password. Save a copy without a password and try again.',
   'adjustPdf.error.empty': 'This PDF has no pages. Choose a PDF with at least one page.',
   'adjustPdf.error.rotated':
     'This PDF has rotated pages. Rotate the pages in another app and try again.',
